@@ -64,6 +64,11 @@ go get -u ./... && go mod tidy && go build ./... && go test ./...
 
 If a major version bump is required, update one module at a time with a focused commit per bump.
 
+## Git
+
+- **No AI attribution in commits or pushes.** No `Co-Authored-By: Claude…`, no "Generated with Claude Code" footers, no AI mention anywhere in commit messages, PR bodies, or push artifacts. (See CLAUDE.md.)
+- Prefer new commits over amending published ones.
+
 ## Files
 
 - `cmd/murmur/main.go` — entry point
