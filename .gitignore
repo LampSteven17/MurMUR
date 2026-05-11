@@ -1,0 +1,22 @@
+# Binaries
+/murmur
+/bin/
+
+# Local config (cluster secrets)
+*.local.yaml
+*.local.yml
+.env
+.env.*
+!.env.example
+
+# Build / test artifacts
+*.test
+*.out
+coverage.txt
+dist/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
