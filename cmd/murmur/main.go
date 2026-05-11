@@ -9,6 +9,7 @@ import (
 
 	"github.com/rtx-monster/murmur/internal/config"
 	"github.com/rtx-monster/murmur/internal/proxmox"
+	"github.com/rtx-monster/murmur/internal/tui"
 )
 
 func main() {
@@ -18,8 +19,14 @@ func main() {
 		fmt.Fprintln(os.Stderr, "commands:")
 		fmt.Fprintln(os.Stderr, "  validate    load and validate the cluster config")
 		fmt.Fprintln(os.Stderr, "  status      connect to the cluster and print version + resource summary")
+		fmt.Fprintln(os.Stderr, "  tui         launch the interactive TUI")
 	}
 	flag.Parse()
+
+	if flag.NArg() == 0 {
+		flag.Usage()
+		os.Exit(2)
+	}
 
 	cfg, err := loadConfig(*cfgPath)
 	if err != nil {
@@ -37,9 +44,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
-	case "":
-		flag.Usage()
-		os.Exit(2)
+	case "tui":
+		if err := cmdTUI(cfg); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n", flag.Arg(0))
 		flag.Usage()
@@ -104,4 +113,17 @@ func cmdStatus(cfg *config.Config) error {
 	}
 	fmt.Printf("storage:   all configured IDs present (%v)\n", required)
 	return nil
+}
+
+func cmdTUI(cfg *config.Config) error {
+	client, err := proxmox.New(proxmox.Config{
+		Endpoint:      cfg.Cluster.API.Endpoint,
+		TokenID:       cfg.Cluster.API.TokenID,
+		TokenSecret:   cfg.Cluster.API.TokenSecret,
+		TLSSkipVerify: cfg.Cluster.API.TLSSkipVerify,
+	})
+	if err != nil {
+		return err
+	}
+	return tui.Run(cfg, client)
 }
