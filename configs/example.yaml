@@ -1,0 +1,87 @@
+# Example murmur cluster configuration.
+#
+# Two-file pattern:
+#   cluster.yaml   — this file, committed/shareable, uses ${VAR} for secrets
+#   cluster.env    — gitignored, KEY=value pairs, loaded before YAML parse
+#
+# Resolution order (first match wins):
+#   $MURMUR_CONFIG  |  ./cluster.yaml  |  ~/.config/murmur/cluster.yaml
+# Env file is looked up alongside the chosen config (same dir, `cluster.env`)
+# or via $MURMUR_ENV.
+#
+# Any string value may use ${VAR}. Resolution happens at load; missing vars
+# fail loudly with a pointer to which field needed them.
+
+cluster:
+  name: example
+  domain: example.net          # used for hostname/DNS conventions
+
+  api:
+    endpoint: https://10.0.0.12:8006
+    token_id: automation@pve!murmur
+    token_secret: ${PROXMOX_TOKEN_SECRET}
+    tls_skip_verify: true          # ProxMox usually self-signs
+
+  # All nodes. `address` is for SSH; the API uses cluster.api.endpoint.
+  # Roles are free-form labels murmur uses to make placement choices.
+  nodes:
+    - { name: pve1, address: 10.0.0.12, roles: [compute, templates] }
+    - { name: pve2, address: 10.0.0.14, roles: [compute] }
+    - { name: pve3, address: 10.0.0.20, roles: [compute] }
+    # ...
+
+  # ProxMox storage IDs (as they appear in `pvesh get /storage`).
+  # Validated at config-load by hitting the API; missing IDs fail loudly.
+  storage:
+    vm_disk: ceph-rbd              # VM/LXC root disks
+    shared:  cephfs                # snippets, templates
+    iso:     cephfs                # cloud-image / ISO uploads
+
+  network:
+    default_bridge: vmbr0
+    default_vlan: null             # set if cluster uses VLAN tagging by default
+
+  # Cloud-init default usernames per distro. murmur picks the right one
+  # based on the image being provisioned. Extends the builtin map.
+  ssh:
+    identity: ~/.ssh/id_rsa
+    users:
+      # fedora/debian/ubuntu/alpine/rocky/arch are builtin; override here
+      alpine: root
+
+# --- Optional sections below ---
+
+# Flavor catalog. Murmur ships a default set; entries here EXTEND it,
+# and a name collision OVERRIDES the builtin.
+flavors:
+  - { name: 16vcpu.32gb, cpu: 16, memory_mb: 32768, disk_gb: 256 }
+
+# Image catalog. Same merge semantics as flavors.
+images:
+  - name:   debian-13-custom
+    distro: debian
+    url:    https://internal.example/debian-13-hardened.qcow2
+
+# Reverse-proxy hint. Murmur stamps this string on the VM description with
+# {port} substituted from the compose file. An external sync (Traefik,
+# Caddy, etc.) reads the description and publishes the route. Omit the
+# section entirely to disable.
+reverse_proxy:
+  description_template: "traefik-port:{port}"
+
+# Observability URLs. Surfaced in the TUI as links; not required.
+monitoring:
+  grafana:    https://grafana.example.net
+  loki:       https://loki.example.net
+  prometheus: https://prom.example.net
+
+# Optional shared-storage backends murmur knows how to wire into VMs.
+# Type is the protocol (smb | nfs). TrueNAS/Unraid present as SMB or NFS,
+# so no special-cased types are needed.
+storage_backends:
+  - name: nas
+    type: smb
+    host: 10.0.0.17
+    share: share
+    username: ${NAS_USER}
+    password: ${NAS_PASS}

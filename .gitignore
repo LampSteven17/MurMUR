@@ -2,9 +2,10 @@
 /murmur
 /bin/
 
-# Local config (cluster secrets)
+# Local config (cluster secrets) — committable .yaml uses ${VAR}, .env holds values
 *.local.yaml
 *.local.yml
+cluster.env
 .env
 .env.*
 !.env.example
