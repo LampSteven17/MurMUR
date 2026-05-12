@@ -60,7 +60,7 @@ Pure docs/yaml/memory edits don't need the build+copy.
 
 1. New file under `internal/tui/views/`, implementing the `View` interface (`Init`, `Update`, `View`, `Title`, `ShortHelp`, `FullHelp`).
 2. Data loading uses `tea.Cmd` returning a message — **never** a goroutine that calls back via channel into the model.
-3. No `tea.Tick`. If a view needs periodic refresh, the user presses `r` or the operation explicitly schedules a fetch.
+3. No `tea.Tick` — with the single sanctioned exception of the welcome splash view's intro animation, which stops on the first keypress. Steady-state views must remain tick-free so copy-paste works.
 4. Register the view in the app's view registry and add a navigation entry if user-reachable.
 
 ## Procedure: extend the ProxMox API client

@@ -24,7 +24,7 @@ Go 1.25.5. No tests required at the v0.1 stage; add them once the surface stabil
 ## Design principles
 
 - **Configurable, not hardcoded.** No cluster-specific names, IPs, domains, or storage IDs anywhere in code or fixtures. Anything cluster-specific lives in `cluster.yaml`.
-- **Event-driven TUI, no tick.** Refresh happens on user action or async-fetch-complete messages — never `tea.Tick`. Copy-paste must work in a normal terminal.
+- **Event-driven TUI, no tick.** Refresh happens on user action or async-fetch-complete messages — never `tea.Tick`. Copy-paste must work in a normal terminal. **Narrow exception:** the welcome splash uses `tea.Tick` to animate the intro (spinning + laughing skull). The first user keypress dismisses welcome and the ticks stop. Steady-state views remain tick-free.
 - **Loud failures.** Validate at load. Surface errors with the field path. Don't silently fall back.
 
 ## Config
