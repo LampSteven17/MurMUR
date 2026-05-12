@@ -27,6 +27,20 @@ This skill stores no state. To read it:
 3. **Go module health:** `go vet ./... && go test ./...`
 4. **Open tasks:** check `TaskList` in the parent project where the work was scoped.
 
+## Build + copy workflow (mandatory after every code change)
+
+After **every** Go change under `~/murmur/`, run:
+
+```bash
+cd ~/murmur && go build -o murmur ./cmd/murmur && cp murmur ~/TheLightLab/murmur
+```
+
+User runs murmur from `~/TheLightLab/` as `./murmur tui` against the real cluster. Skipping the copy means the user runs stale code. The copy is part of "done", not a follow-up step.
+
+If `cp` fails with `Text file busy`, the user has the TUI running — ask them to quit (`q`) before retrying. Don't kill the process for them.
+
+Pure docs/yaml/memory edits don't need the build+copy.
+
 ## Architectural principles (load-bearing)
 
 - **Configurable, not hardcoded.** No `prxy-*`, `192.168.x.x`, `example.net`, or any other cluster-specific token in non-fixture code. If a value differs between clusters, it goes in `cluster.yaml`.
