@@ -89,44 +89,64 @@ func (v *OverviewView) Update(msg tea.Msg) (View, tea.Cmd) {
 }
 
 func (v *OverviewView) View(width, height int) string {
-	if v.err != nil {
-		return v.styles.Border.Width(width - 4).Render(
-			lipgloss.NewStyle().Foreground(DefaultTheme.Vermilion).Render(
-				Glyph.Error + " " + v.err.Error(),
-			),
-		)
+	var b strings.Builder
+
+	// Header line — mirrors the list views' shape: glyph + LABEL left,
+	// subtle info right.
+	header := v.styles.Title.Render("☉  OVERVIEW")
+	right := ""
+	if v.loaded {
+		right = v.styles.Subtle.Render(fmt.Sprintf(
+			"proxmox %s · release %s",
+			v.data.Version.Version, v.data.Version.Release,
+		))
 	}
-	if !v.loaded {
-		return v.styles.Subtle.Render(" " + Glyph.InFlight + " consulting the conclave…")
+	gap := width - lipgloss.Width(header) - lipgloss.Width(right)
+	if gap < 1 {
+		gap = 1
+	}
+	b.WriteString(header + lipgloss.NewStyle().Width(gap).Render("") + right)
+	b.WriteString("\n\n")
+
+	switch {
+	case v.err != nil:
+		b.WriteString(v.styles.StatusError.Render(Glyph.Error+" ") +
+			lipgloss.NewStyle().Foreground(DefaultTheme.Vermilion).Render(v.err.Error()))
+	case !v.loaded:
+		b.WriteString(v.styles.Subtle.Render(Glyph.InFlight + " consulting the conclave…"))
+	default:
+		b.WriteString(v.renderStats())
+		b.WriteString("\n")
+		fetched := v.styles.Subtle.Render(fmt.Sprintf("fetched %s", time.Now().Format("15:04:05")))
+		heartbeat := v.styles.Heartbeat.Render("◉")
+		b.WriteString(" " + heartbeat + " " + fetched)
 	}
 
-	skull := RenderSkull(DefaultTheme)
+	// Force exact Width × Height. Done manually because lipgloss.Style.Height
+	// doesn't reliably pad short content with blank rows — we explicitly
+	// append spaces-per-line up to width and blank rows up to height to
+	// fully overwrite anything from the previous view.
+	return padBlock(b.String(), width, height)
+}
 
-	header := lipgloss.NewStyle().Foreground(DefaultTheme.Vermilion).Bold(true).Render(
-		strings.ToUpper(v.cfg.Cluster.Name),
-	)
-	subheader := v.styles.Subtle.Render(fmt.Sprintf(
-		"proxmox %s · release %s",
-		v.data.Version.Version, v.data.Version.Release,
-	))
-
-	statsBox := v.renderStats()
-
-	fetched := v.styles.Subtle.Render(fmt.Sprintf("fetched %s", time.Now().Format("15:04:05")))
-	heartbeat := v.styles.Heartbeat.Render("◉")
-	footer := fmt.Sprintf("%s %s", heartbeat, fetched)
-
-	body := lipgloss.JoinVertical(lipgloss.Center,
-		skull,
-		"",
-		header,
-		subheader,
-		"",
-		statsBox,
-		"",
-		footer,
-	)
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Top, body)
+// padBlock pads s to exactly width columns × height rows with spaces.
+// Lines wider than width are left as-is; rows beyond height are truncated.
+func padBlock(s string, width, height int) string {
+	lines := strings.Split(s, "\n")
+	for i, ln := range lines {
+		w := lipgloss.Width(ln)
+		if w < width {
+			lines[i] = ln + strings.Repeat(" ", width-w)
+		}
+	}
+	blank := strings.Repeat(" ", width)
+	for len(lines) < height {
+		lines = append(lines, blank)
+	}
+	if len(lines) > height {
+		lines = lines[:height]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (v *OverviewView) renderStats() string {

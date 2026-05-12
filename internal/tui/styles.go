@@ -53,8 +53,10 @@ var DefaultTheme = Theme{
 	BoldText: lipgloss.Color("#d4c5a0"),
 }
 
-// Glyph is the alchemical signifier vocabulary. Glyphs are decoration only;
-// every glyph in the UI has a plain-text label nearby.
+// Glyph is the visual signifier vocabulary. All glyphs are strictly 1 col
+// wide on every terminal (Geometric Shapes, Box Drawing, Dingbats) — no
+// alchemical/emoji-block glyphs because they render double-width on some
+// terminals while lipgloss measures them as 1 col, breaking layout.
 var Glyph = struct {
 	VM        string
 	LXC       string
@@ -69,31 +71,32 @@ var Glyph = struct {
 	Empty     string
 	Refresh   string
 }{
-	VM:        "⚗",
-	LXC:       "☿",
-	Node:      "🜂",
-	Storage:   "🜔",
-	Running:   "◉",
-	Stopped:   "○",
-	InFlight:  "⚹",
-	Selection: "▶",
-	Sealed:    "🜚",
-	Error:     "✠",
-	Empty:     "⚘",
-	Refresh:   "☉",
+	VM:        "◆", // Black Diamond — running guest VM
+	LXC:       "◇", // White Diamond — running container
+	Node:      "▲", // Black Triangle — physical host
+	Storage:   "■", // Black Square — storage pool
+	Running:   "◉", // Fisheye — running
+	Stopped:   "○", // Circle — stopped
+	InFlight:  "◐", // Half-Circle Left — task in flight
+	Selection: "▶", // Triangle — cursor
+	Sealed:    "✦", // Black 4-Point Star — sealed/OK
+	Error:     "✠", // Cross — error
+	Empty:     "◌", // Dotted Circle — empty state
+	Refresh:   "↻", // Clockwise Open Circle — refresh
 }
 
-// AthanorBorder is the ornate border: simple lines with elemental glyph
-// corners. Use for splash/welcome and key dialogs; tables use lighter borders.
+// AthanorBorder is the heavy-walled "sealed vault" border. All glyphs are
+// Box Drawing block — strictly 1 col on every terminal — so width-aware
+// layout above and below the border doesn't drift.
 var AthanorBorder = lipgloss.Border{
-	Top:         "─",
-	Bottom:      "─",
-	Left:        "│",
-	Right:       "│",
-	TopLeft:     "⚗",
-	TopRight:    "☿",
-	BottomLeft:  "🜂",
-	BottomRight: "🜔",
+	Top:         "═",
+	Bottom:      "═",
+	Left:        "║",
+	Right:       "║",
+	TopLeft:     "╔",
+	TopRight:    "╗",
+	BottomLeft:  "╚",
+	BottomRight: "╝",
 }
 
 // Styles is the rendered style collection callers reach for.
