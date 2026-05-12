@@ -13,13 +13,17 @@ import (
 
 // Load resolves the config path, loads any sibling env file, substitutes
 // ${VAR} references in YAML scalars, decodes, merges builtin catalogs,
-// and validates.
-func Load() (*Config, error) {
+// and validates. Returns the resolved absolute path alongside the config.
+func Load() (string, *Config, error) {
 	path, err := findConfig()
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
-	return LoadFile(path)
+	cfg, err := LoadFile(path)
+	if err != nil {
+		return path, nil, err
+	}
+	return path, cfg, nil
 }
 
 // LoadFile loads an explicit config file path.

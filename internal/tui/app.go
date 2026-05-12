@@ -6,10 +6,14 @@
 //     session, but because there are zero periodic redraws, terminal text
 //     selection in the alt-screen also works.
 //   - Views implement the View interface and own their own state.
+//   - App holds a stack: stack[0] is the active tab; overlays (modals, stream
+//     view) push above. Top of stack handles input; nav keys (1-4) are
+//     swallowed when overlays are present.
 package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -34,51 +38,99 @@ type KeyMap struct {
 	Refresh key.Binding
 	Help    key.Binding
 	Quit    key.Binding
+	Tab1    key.Binding
+	Tab2    key.Binding
+	Tab3    key.Binding
+	Tab4    key.Binding
+	Tab5    key.Binding
 }
 
 func DefaultKeyMap() KeyMap {
 	return KeyMap{
 		Refresh: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
-		Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "toggle help")),
+		Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 		Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		Tab1:    key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "overview")),
+		Tab2:    key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "VMs")),
+		Tab3:    key.NewBinding(key.WithKeys("3"), key.WithHelp("3", "LXCs")),
+		Tab4:    key.NewBinding(key.WithKeys("4"), key.WithHelp("4", "nodes")),
+		Tab5:    key.NewBinding(key.WithKeys("5"), key.WithHelp("5", "templates")),
 	}
 }
 
-// App is the root Bubble Tea model. Holds shared state and routes messages.
+// tabSpec is one entry in the tab bar.
+type tabSpec struct {
+	name  string // key for SwitchTabMsg
+	label string // shown in tab bar
+	make  func() View
+}
+
+// App is the root Bubble Tea model.
 type App struct {
-	cfg    *config.Config
-	client *proxmox.Client
-	view   View
-	keys   KeyMap
+	cfg        *config.Config
+	client     *proxmox.Client
+	configPath string
+
+	tabs    []tabSpec
+	tabByID map[string]int
+	// tabCache holds the latest constructed instance per tab so navigation
+	// doesn't reset fetched data.
+	tabCache map[string]View
+	activeID string
+
+	stack []View // stack[0] = active tab; entries above are overlays
+	keys  KeyMap
 	styles Styles
 	help   help.Model
 	width  int
 	height int
 }
 
-// New constructs an App with the given config and client. The initial view
-// is the cluster overview.
-func New(cfg *config.Config, client *proxmox.Client) *App {
+// New constructs an App. configPath is the resolved cluster.yaml path; it is
+// surfaced in the header.
+func New(cfg *config.Config, client *proxmox.Client, configPath string) *App {
 	a := &App{
-		cfg:    cfg,
-		client: client,
-		keys:   DefaultKeyMap(),
-		styles: NewStyles(DefaultTheme),
-		help:   help.New(),
+		cfg:        cfg,
+		client:     client,
+		configPath: configPath,
+		keys:       DefaultKeyMap(),
+		styles:     NewStyles(DefaultTheme),
+		help:       help.New(),
+		tabByID:    map[string]int{},
+		tabCache:   map[string]View{},
 	}
-	a.view = NewOverviewView(cfg, client)
+	a.tabs = []tabSpec{
+		{name: "overview", label: "overview", make: func() View { return NewOverviewView(cfg, client) }},
+		{name: "vms", label: "VMs", make: func() View { return NewVMsView(cfg, client) }},
+		{name: "lxcs", label: "LXCs", make: func() View { return NewLXCsView(cfg, client) }},
+		{name: "nodes", label: "nodes", make: func() View { return NewNodesView(cfg, client) }},
+		{name: "templates", label: "templates", make: func() View { return NewTemplatesView(cfg, client) }},
+	}
+	for i, t := range a.tabs {
+		a.tabByID[t.name] = i
+	}
+	// Initial stack: welcome splash. First keypress switches to overview.
+	a.stack = []View{NewWelcomeView(cfg, configPath)}
 	return a
 }
 
 // Run starts the TUI program. Blocks until quit.
-func Run(cfg *config.Config, client *proxmox.Client) error {
-	prog := tea.NewProgram(New(cfg, client), tea.WithAltScreen())
+func Run(cfg *config.Config, client *proxmox.Client, configPath string) error {
+	prog := tea.NewProgram(New(cfg, client, configPath), tea.WithAltScreen())
 	_, err := prog.Run()
 	return err
 }
 
 func (a *App) Init() tea.Cmd {
-	return a.view.Init()
+	return a.top().Init()
+}
+
+func (a *App) top() View {
+	return a.stack[len(a.stack)-1]
+}
+
+func (a *App) replaceTop(v View) {
+	a.stack[len(a.stack)-1] = v
 }
 
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -87,7 +139,22 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.width = m.Width
 		a.height = m.Height
 		a.help.Width = m.Width
+
+	case SwitchTabMsg:
+		return a, a.switchTab(m.Name)
+
+	case PushViewMsg:
+		a.stack = append(a.stack, m.View)
+		return a, m.View.Init()
+
+	case PopViewMsg:
+		if len(a.stack) > 1 {
+			a.stack = a.stack[:len(a.stack)-1]
+		}
+		return a, nil
+
 	case tea.KeyMsg:
+		// App-level keys: always quit/help. Tab keys only at stack depth 1.
 		switch {
 		case key.Matches(m, a.keys.Quit):
 			return a, tea.Quit
@@ -95,46 +162,121 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.help.ShowAll = !a.help.ShowAll
 			return a, nil
 		case key.Matches(m, a.keys.Refresh):
-			// Translate to RefreshMsg and let the view dispatch its fetch.
-			v, cmd := a.view.Update(RefreshMsg{})
-			a.view = v
+			v, cmd := a.top().Update(RefreshMsg{})
+			a.replaceTop(v)
 			return a, cmd
 		}
+		if len(a.stack) == 1 {
+			switch {
+			case key.Matches(m, a.keys.Tab1):
+				return a, a.switchTab("overview")
+			case key.Matches(m, a.keys.Tab2):
+				return a, a.switchTab("vms")
+			case key.Matches(m, a.keys.Tab3):
+				return a, a.switchTab("lxcs")
+			case key.Matches(m, a.keys.Tab4):
+				return a, a.switchTab("nodes")
+			case key.Matches(m, a.keys.Tab5):
+				return a, a.switchTab("templates")
+			}
+		}
 	}
-	v, cmd := a.view.Update(msg)
-	a.view = v
+	// Route everything else to the top view.
+	v, cmd := a.top().Update(msg)
+	a.replaceTop(v)
 	return a, cmd
+}
+
+// placeholderView is shown for not-yet-implemented tabs.
+type placeholderView struct {
+	name   string
+	label  string
+	styles Styles
+}
+
+func newPlaceholderView(name, label string) *placeholderView {
+	return &placeholderView{name: name, label: label, styles: NewStyles(DefaultTheme)}
+}
+
+func (p *placeholderView) Init() tea.Cmd                       { return nil }
+func (p *placeholderView) Update(msg tea.Msg) (View, tea.Cmd)  { return p, nil }
+func (p *placeholderView) Title() string                       { return p.label }
+func (p *placeholderView) Help() []key.Binding                 { return nil }
+func (p *placeholderView) View(width, height int) string {
+	msg := p.styles.Subtle.Render(Glyph.Empty + " " + p.label + " — not yet inscribed.")
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, msg)
+}
+
+// switchTab replaces stack[0] with the named tab (caching the instance).
+// Drops any overlays above. Returns Init cmd for the destination tab.
+func (a *App) switchTab(name string) tea.Cmd {
+	idx, ok := a.tabByID[name]
+	if !ok {
+		return nil
+	}
+	spec := a.tabs[idx]
+	v, cached := a.tabCache[name]
+	if !cached {
+		v = spec.make()
+		if v == nil {
+			// Placeholder for not-yet-implemented tabs.
+			v = newPlaceholderView(name, spec.label)
+		}
+		a.tabCache[name] = v
+	}
+	a.activeID = name
+	a.stack = []View{v}
+	return v.Init()
 }
 
 func (a *App) View() string {
 	if a.width == 0 || a.height == 0 {
 		return "" // initial frame before WindowSizeMsg
 	}
+	// Welcome view renders full-bleed (centered banner) — no chrome.
+	if _, isWelcome := a.top().(*WelcomeView); isWelcome {
+		return a.top().View(a.width, a.height)
+	}
 	header := a.renderHeader()
 	footer := a.renderFooter()
 	bodyHeight := a.height - lipgloss.Height(header) - lipgloss.Height(footer)
-	body := a.view.View(a.width, bodyHeight)
+	body := a.top().View(a.width, bodyHeight)
 	return lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
 }
 
 func (a *App) renderHeader() string {
-	name := a.styles.Title.Render(fmt.Sprintf("murmur · %s", a.cfg.Cluster.Name))
-	endpoint := a.styles.Subtle.Render(a.cfg.Cluster.API.Endpoint)
-	left := lipgloss.JoinHorizontal(lipgloss.Top, name, "  ", endpoint)
-	title := a.styles.Subtle.Render(a.view.Title())
-	gap := a.width - lipgloss.Width(left) - lipgloss.Width(title)
+	title := a.styles.Title.Render(fmt.Sprintf("⚗ murmur · %s", a.cfg.Cluster.Name))
+	path := a.styles.Hex.Render(a.configPath)
+	gap := a.width - lipgloss.Width(title) - lipgloss.Width(path)
 	if gap < 1 {
 		gap = 1
 	}
-	return left + lipgloss.NewStyle().Width(gap).Render("") + title + "\n"
+	titleLine := title + lipgloss.NewStyle().Width(gap).Render("") + path
+
+	// Tab bar
+	var tb strings.Builder
+	tb.WriteString(" ")
+	for _, t := range a.tabs {
+		key := a.styles.Key.Render(fmt.Sprintf("[%d]", a.tabByID[t.name]+1))
+		label := t.label
+		if t.name == a.activeID {
+			label = a.styles.Title.Render(label)
+		} else {
+			label = a.styles.Subtle.Render(label)
+		}
+		tb.WriteString(key + label + "  ")
+	}
+	divider := a.styles.Subtle.Render(strings.Repeat("─", a.width))
+	return strings.Join([]string{titleLine, tb.String(), divider}, "\n")
 }
 
 func (a *App) renderFooter() string {
-	bindings := append(a.view.Help(),
+	bindings := append(a.top().Help(),
 		a.keys.Refresh, a.keys.Help, a.keys.Quit,
 	)
+	divider := a.styles.Subtle.Render(strings.Repeat("─", a.width))
 	if a.help.ShowAll {
-		return "\n" + a.help.FullHelpView([][]key.Binding{bindings})
+		return "\n" + divider + "\n" + a.help.FullHelpView([][]key.Binding{bindings})
 	}
-	return "\n" + a.help.ShortHelpView(bindings)
+	return "\n" + divider + "\n" + a.help.ShortHelpView(bindings)
 }

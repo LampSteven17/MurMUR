@@ -28,7 +28,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	cfg, err := loadConfig(*cfgPath)
+	resolvedPath, cfg, err := loadConfig(*cfgPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
@@ -45,7 +45,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "tui":
-		if err := cmdTUI(cfg); err != nil {
+		if err := cmdTUI(cfg, resolvedPath); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
@@ -56,9 +56,10 @@ func main() {
 	}
 }
 
-func loadConfig(path string) (*config.Config, error) {
+func loadConfig(path string) (string, *config.Config, error) {
 	if path != "" {
-		return config.LoadFile(path)
+		cfg, err := config.LoadFile(path)
+		return path, cfg, err
 	}
 	return config.Load()
 }
@@ -115,7 +116,7 @@ func cmdStatus(cfg *config.Config) error {
 	return nil
 }
 
-func cmdTUI(cfg *config.Config) error {
+func cmdTUI(cfg *config.Config, configPath string) error {
 	client, err := proxmox.New(proxmox.Config{
 		Endpoint:      cfg.Cluster.API.Endpoint,
 		TokenID:       cfg.Cluster.API.TokenID,
@@ -125,5 +126,5 @@ func cmdTUI(cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	return tui.Run(cfg, client)
+	return tui.Run(cfg, client, configPath)
 }
