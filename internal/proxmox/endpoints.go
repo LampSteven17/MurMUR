@@ -30,6 +30,7 @@ type Resource struct {
 	Name    string  `json:"name,omitempty"`   // VM/LXC name; node name for nodes
 	VMID    int     `json:"vmid,omitempty"`   // for qemu / lxc
 	Status  string  `json:"status,omitempty"` // running | stopped | online | offline
+	Template int    `json:"template,omitempty"` // 1 if the qemu/lxc row is a template
 	MaxCPU  float64 `json:"maxcpu,omitempty"`
 	MaxMem  int64   `json:"maxmem,omitempty"`
 	MaxDisk int64   `json:"maxdisk,omitempty"`

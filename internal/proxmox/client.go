@@ -16,6 +16,14 @@ import (
 	"time"
 )
 
+// formBody encodes url.Values for an x-www-form-urlencoded request body.
+func formBody(v url.Values) io.Reader {
+	if v == nil {
+		return nil
+	}
+	return strings.NewReader(v.Encode())
+}
+
 // Config configures a Client.
 type Config struct {
 	// Endpoint is the ProxMox server URL, e.g. "https://10.0.0.12:8006".
@@ -135,4 +143,34 @@ func (c *Client) GetJSON(ctx context.Context, path string, out any) error {
 		return fmt.Errorf("proxmox: decode %s: %w", path, err)
 	}
 	return nil
+}
+
+// PostForm issues POST path with url.Values as a form-encoded body and
+// returns the raw `data` field. Most mutating ProxMox endpoints return a
+// UPID string here; decode with decodeUPID.
+func (c *Client) PostForm(ctx context.Context, path string, form url.Values) (json.RawMessage, error) {
+	return c.do(ctx, http.MethodPost, path, formBody(form))
+}
+
+// PutForm issues PUT path with url.Values as a form-encoded body.
+func (c *Client) PutForm(ctx context.Context, path string, form url.Values) (json.RawMessage, error) {
+	return c.do(ctx, http.MethodPut, path, formBody(form))
+}
+
+// Delete issues DELETE path with an optional form-encoded body.
+func (c *Client) Delete(ctx context.Context, path string, form url.Values) (json.RawMessage, error) {
+	return c.do(ctx, http.MethodDelete, path, formBody(form))
+}
+
+// decodeUPID decodes a `data` field that is a JSON-encoded string (the typical
+// shape for mutating endpoints, e.g. "UPID:pve1:...").
+func decodeUPID(raw json.RawMessage) (string, error) {
+	if len(raw) == 0 {
+		return "", nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return "", fmt.Errorf("proxmox: decode UPID: %w (got %s)", err, string(raw))
+	}
+	return s, nil
 }
