@@ -14,7 +14,9 @@ import (
 	"github.com/rtx-monster/murmur/internal/proxmox"
 )
 
-// OverviewView is the cluster overview screen: skull centerpiece + stats grid.
+// OverviewView is the cluster overview screen: login + quota bars + actions
+// menu + cluster summary. Action keys (d/t/u) are handled at the app level
+// — they switch to the corresponding action tab.
 type OverviewView struct {
 	cfg     *config.Config
 	client  *proxmox.Client
@@ -106,6 +108,8 @@ func (v *OverviewView) View(width, height int) string {
 		gap = 1
 	}
 	b.WriteString(header + lipgloss.NewStyle().Width(gap).Render("") + right)
+	b.WriteString("\n")
+	b.WriteString(v.renderLogin())
 	b.WriteString("\n\n")
 
 	switch {
@@ -115,8 +119,12 @@ func (v *OverviewView) View(width, height int) string {
 	case !v.loaded:
 		b.WriteString(v.styles.Subtle.Render(Glyph.InFlight + " consulting the conclave…"))
 	default:
-		b.WriteString(v.renderStats())
-		b.WriteString("\n")
+		b.WriteString(v.renderBars())
+		b.WriteString("\n\n")
+		b.WriteString(v.renderActions())
+		b.WriteString("\n\n")
+		b.WriteString(v.renderClusterSummary())
+		b.WriteString("\n\n")
 		fetched := v.styles.Subtle.Render(fmt.Sprintf("fetched %s", time.Now().Format("15:04:05")))
 		heartbeat := v.styles.Heartbeat.Render("◉")
 		b.WriteString(" " + heartbeat + " " + fetched)
@@ -127,6 +135,15 @@ func (v *OverviewView) View(width, height int) string {
 	// append spaces-per-line up to width and blank rows up to height to
 	// fully overwrite anything from the previous view.
 	return padBlock(b.String(), width, height)
+}
+
+// renderLogin shows the API token id that murmur is authenticated as.
+func (v *OverviewView) renderLogin() string {
+	user := v.cfg.Cluster.API.TokenID
+	if user == "" {
+		user = "(no token configured)"
+	}
+	return " " + v.styles.Subtle.Render("logged in as ") + v.styles.Info.Render(user)
 }
 
 // padBlock pads s to exactly width columns × height rows with spaces.
@@ -149,7 +166,92 @@ func padBlock(s string, width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
-func (v *OverviewView) renderStats() string {
+// barCells is the visual length of each quota bar.
+const barCells = 28
+
+// renderBars draws the three primary quota bars: vCPU, RAM, DISK.
+// vCPU uses cores-allocated against cores-total (what's spoken for).
+// RAM and DISK use actual usage against cluster-wide capacity.
+func (v *OverviewView) renderBars() string {
+	s := v.stats
+	lines := []string{
+		v.renderBar("vCPU",
+			int64(s.CoresAllocated), int64(s.CoresTotal),
+			fmt.Sprintf("%d / %d", s.CoresAllocated, s.CoresTotal)),
+		v.renderBar("RAM",
+			s.MemUsed, s.MemTotal,
+			fmt.Sprintf("%s / %s", formatBytes(s.MemUsed), formatBytes(s.MemTotal))),
+		v.renderBar("DISK",
+			s.DiskUsed, s.DiskTotal,
+			fmt.Sprintf("%s / %s", formatBytes(s.DiskUsed), formatBytes(s.DiskTotal))),
+	}
+	return strings.Join(lines, "\n")
+}
+
+// renderBar draws one labeled bar: " LABEL  ███░░░  used / total   NN%".
+// Color of the filled portion shifts with utilization: verdigris < 60%,
+// gold < 85%, vermilion ≥ 85%.
+func (v *OverviewView) renderBar(label string, used, total int64, value string) string {
+	muted := lipgloss.NewStyle().Foreground(DefaultTheme.Muted)
+	gold := lipgloss.NewStyle().Foreground(DefaultTheme.Gold).Bold(true)
+	labelStyle := lipgloss.NewStyle().Foreground(DefaultTheme.Ink).Bold(true)
+
+	var pct float64
+	if total > 0 {
+		pct = float64(used) / float64(total)
+	}
+	if pct > 1 {
+		pct = 1
+	}
+	filled := int(pct * float64(barCells))
+
+	var fillColor lipgloss.Color
+	switch {
+	case pct >= 0.85:
+		fillColor = DefaultTheme.Vermilion
+	case pct >= 0.60:
+		fillColor = DefaultTheme.Gold
+	default:
+		fillColor = DefaultTheme.Verdigris
+	}
+	fillStyle := lipgloss.NewStyle().Foreground(fillColor)
+
+	bar := fillStyle.Render(strings.Repeat("█", filled)) +
+		muted.Render(strings.Repeat("░", barCells-filled))
+
+	return fmt.Sprintf(" %s  %s  %s   %s",
+		labelStyle.Render(padRight(label, 4)),
+		bar,
+		gold.Render(padRight(value, 17)),
+		muted.Render(fmt.Sprintf("%3d%%", int(pct*100))),
+	)
+}
+
+// renderActions draws the primary actions menu.
+func (v *OverviewView) renderActions() string {
+	keyStyle := lipgloss.NewStyle().Foreground(DefaultTheme.Gold).Bold(true)
+	labelStyle := lipgloss.NewStyle().Foreground(DefaultTheme.Ink).Bold(true)
+	descStyle := lipgloss.NewStyle().Foreground(DefaultTheme.Muted)
+
+	row := func(k, label, desc string) string {
+		return fmt.Sprintf("   %s  %s  %s",
+			keyStyle.Render("["+k+"]"),
+			labelStyle.Render(padRight(label, 10)),
+			descStyle.Render("· "+desc),
+		)
+	}
+
+	lines := []string{
+		v.styles.Title.Render(" ACTIONS"),
+		row("d", "deploy", "provision new guest"),
+		row("t", "teardown", "destroy existing guest"),
+		row("u", "update", "refresh templates / pull images"),
+	}
+	return strings.Join(lines, "\n")
+}
+
+// renderClusterSummary draws the existing rollup beneath the bars+actions.
+func (v *OverviewView) renderClusterSummary() string {
 	s := v.stats
 	gold := lipgloss.NewStyle().Foreground(DefaultTheme.Gold).Bold(true)
 	merc := lipgloss.NewStyle().Foreground(DefaultTheme.Mercury)
@@ -157,7 +259,7 @@ func (v *OverviewView) renderStats() string {
 	muted := lipgloss.NewStyle().Foreground(DefaultTheme.Muted)
 
 	row := func(glyph, label, value, free string) string {
-		left := fmt.Sprintf(" %s  %s", glyph, muted.Render(label))
+		left := fmt.Sprintf("   %s  %s", glyph, muted.Render(label))
 		leftWidth := 22
 		pad := leftWidth - lipgloss.Width(left)
 		if pad < 1 {
@@ -170,16 +272,8 @@ func (v *OverviewView) renderStats() string {
 		return line
 	}
 
-	memPct := 0
-	if s.MemTotal > 0 {
-		memPct = int(float64(s.MemUsed) * 100 / float64(s.MemTotal))
-	}
-	diskPct := 0
-	if s.DiskTotal > 0 {
-		diskPct = int(float64(s.DiskUsed) * 100 / float64(s.DiskTotal))
-	}
-
 	lines := []string{
+		v.styles.Title.Render(" CLUSTER"),
 		row(Glyph.Node, "nodes",
 			fmt.Sprintf("%d/%d", s.NodesOnline, s.NodesTotal),
 			verd.Render("online")),
@@ -189,25 +283,19 @@ func (v *OverviewView) renderStats() string {
 		row(Glyph.LXC, "LXCs",
 			fmt.Sprintf("%d", s.LXCsRunning+s.LXCsStopped),
 			fmt.Sprintf("%d running · %d stopped", s.LXCsRunning, s.LXCsStopped)),
-		row(Glyph.VM, "templates",
-			fmt.Sprintf("%d", s.Templates),
-			""),
-		row(Glyph.Storage, "storages",
-			fmt.Sprintf("%d", s.StorageCount),
-			""),
-		"",
-		row("·", "cores allocated",
-			fmt.Sprintf("%d / %d", s.CoresAllocated, s.CoresTotal),
-			fmt.Sprintf("free %d", s.CoresTotal-s.CoresAllocated)),
-		row("·", "memory used",
-			fmt.Sprintf("%s / %s", formatBytes(s.MemUsed), formatBytes(s.MemTotal)),
-			fmt.Sprintf("%d%% · free %s", memPct, formatBytes(s.MemTotal-s.MemUsed))),
-		row("·", "disk used",
-			fmt.Sprintf("%s / %s", formatBytes(s.DiskUsed), formatBytes(s.DiskTotal)),
-			fmt.Sprintf("%d%% · free %s", diskPct, formatBytes(s.DiskTotal-s.DiskUsed))),
+		row(Glyph.VM, "templates", fmt.Sprintf("%d", s.Templates), ""),
+		row(Glyph.Storage, "storages", fmt.Sprintf("%d", s.StorageCount), ""),
 	}
+	return strings.Join(lines, "\n")
+}
 
-	return v.styles.AthanorBorder.Render(strings.Join(lines, "\n"))
+// padRight pads s with spaces to reach the given display width.
+func padRight(s string, width int) string {
+	w := lipgloss.Width(s)
+	if w >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-w)
 }
 
 func (v *OverviewView) Title() string { return "overview" }

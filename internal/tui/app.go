@@ -35,34 +35,42 @@ type View interface {
 
 // KeyMap is the set of app-level keybindings. Per-view keys live on the view.
 type KeyMap struct {
-	Refresh key.Binding
-	Help    key.Binding
-	Quit    key.Binding
-	Tab1    key.Binding
-	Tab2    key.Binding
-	Tab3    key.Binding
-	Tab4    key.Binding
-	Tab5    key.Binding
+	Refresh  key.Binding
+	Help     key.Binding
+	Quit     key.Binding
+	Tab1     key.Binding
+	Tab2     key.Binding
+	Tab3     key.Binding
+	Tab4     key.Binding
+	Tab5     key.Binding
+	Deploy   key.Binding
+	Teardown key.Binding
+	Update   key.Binding
 }
 
 func DefaultKeyMap() KeyMap {
 	return KeyMap{
-		Refresh: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
-		Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
-		Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
-		Tab1:    key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "overview")),
-		Tab2:    key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "VMs")),
-		Tab3:    key.NewBinding(key.WithKeys("3"), key.WithHelp("3", "LXCs")),
-		Tab4:    key.NewBinding(key.WithKeys("4"), key.WithHelp("4", "nodes")),
-		Tab5:    key.NewBinding(key.WithKeys("5"), key.WithHelp("5", "templates")),
+		Refresh:  key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
+		Help:     key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+		Quit:     key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		Tab1:     key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "overview")),
+		Tab2:     key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "VMs")),
+		Tab3:     key.NewBinding(key.WithKeys("3"), key.WithHelp("3", "LXCs")),
+		Tab4:     key.NewBinding(key.WithKeys("4"), key.WithHelp("4", "nodes")),
+		Tab5:     key.NewBinding(key.WithKeys("5"), key.WithHelp("5", "templates")),
+		Deploy:   key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "deploy")),
+		Teardown: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "teardown")),
+		Update:   key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "update")),
 	}
 }
 
 // tabSpec is one entry in the tab bar.
 type tabSpec struct {
-	name  string // key for SwitchTabMsg
-	label string // shown in tab bar
-	make  func() View
+	name     string // key for SwitchTabMsg
+	label    string // shown in tab bar
+	keyLabel string // single-char label rendered in brackets (e.g. "1", "d")
+	action   bool   // separates action tabs (deploy/teardown/update) from view tabs
+	make     func() View
 }
 
 // App is the root Bubble Tea model.
@@ -100,11 +108,14 @@ func New(cfg *config.Config, client *proxmox.Client, configPath string) *App {
 		tabCache:   map[string]View{},
 	}
 	a.tabs = []tabSpec{
-		{name: "overview", label: "overview", make: func() View { return NewOverviewView(cfg, client) }},
-		{name: "vms", label: "VMs", make: func() View { return NewVMsView(cfg, client) }},
-		{name: "lxcs", label: "LXCs", make: func() View { return NewLXCsView(cfg, client) }},
-		{name: "nodes", label: "nodes", make: func() View { return NewNodesView(cfg, client) }},
-		{name: "templates", label: "templates", make: func() View { return NewTemplatesView(cfg, client) }},
+		{name: "deploy", label: "deploy", keyLabel: "d", action: true, make: func() View { return nil }},
+		{name: "teardown", label: "teardown", keyLabel: "t", action: true, make: func() View { return nil }},
+		{name: "update", label: "update", keyLabel: "u", action: true, make: func() View { return nil }},
+		{name: "overview", label: "overview", keyLabel: "1", make: func() View { return NewOverviewView(cfg, client) }},
+		{name: "vms", label: "VMs", keyLabel: "2", make: func() View { return NewVMsView(cfg, client) }},
+		{name: "lxcs", label: "LXCs", keyLabel: "3", make: func() View { return NewLXCsView(cfg, client) }},
+		{name: "nodes", label: "nodes", keyLabel: "4", make: func() View { return NewNodesView(cfg, client) }},
+		{name: "templates", label: "templates", keyLabel: "5", make: func() View { return NewTemplatesView(cfg, client) }},
 	}
 	for i, t := range a.tabs {
 		a.tabByID[t.name] = i
@@ -178,6 +189,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, a.switchTab("nodes")
 			case key.Matches(m, a.keys.Tab5):
 				return a, a.switchTab("templates")
+			case key.Matches(m, a.keys.Deploy):
+				return a, a.switchTab("deploy")
+			case key.Matches(m, a.keys.Teardown):
+				return a, a.switchTab("teardown")
+			case key.Matches(m, a.keys.Update):
+				return a, a.switchTab("update")
 			}
 		}
 	}
@@ -253,18 +270,23 @@ func (a *App) renderHeader() string {
 	}
 	titleLine := title + lipgloss.NewStyle().Width(gap).Render("") + path
 
-	// Tab bar
+	// Tab bar: action tabs left, view tabs right of a divider.
 	var tb strings.Builder
 	tb.WriteString(" ")
+	insertedDivider := false
 	for _, t := range a.tabs {
-		key := a.styles.Key.Render(fmt.Sprintf("[%d]", a.tabByID[t.name]+1))
+		if !t.action && !insertedDivider {
+			tb.WriteString(a.styles.Subtle.Render("│  "))
+			insertedDivider = true
+		}
+		k := a.styles.Key.Render("[" + t.keyLabel + "]")
 		label := t.label
 		if t.name == a.activeID {
 			label = a.styles.Title.Render(label)
 		} else {
 			label = a.styles.Subtle.Render(label)
 		}
-		tb.WriteString(key + label + "  ")
+		tb.WriteString(k + label + "  ")
 	}
 	divider := a.styles.Subtle.Render(strings.Repeat("─", a.width))
 	return strings.Join([]string{titleLine, tb.String(), divider}, "\n")
@@ -272,6 +294,7 @@ func (a *App) renderHeader() string {
 
 func (a *App) renderFooter() string {
 	bindings := append(a.top().Help(),
+		a.keys.Deploy, a.keys.Teardown, a.keys.Update,
 		a.keys.Refresh, a.keys.Help, a.keys.Quit,
 	)
 	divider := a.styles.Subtle.Render(strings.Repeat("─", a.width))

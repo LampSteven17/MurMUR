@@ -57,7 +57,14 @@ func (v *WelcomeView) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg.(type) {
 	case tea.KeyMsg:
 		v.dismissed = true
-		return v, func() tea.Msg { return SwitchTabMsg{Name: "overview"} }
+		// ClearScreen forces a full repaint on the next frame. Without it,
+		// BT's diff renderer can leave the banner's border row on screen
+		// after the layout switches from full-bleed welcome to the chromed
+		// (header+body+footer) overview frame.
+		return v, tea.Batch(
+			tea.ClearScreen,
+			func() tea.Msg { return SwitchTabMsg{Name: "overview"} },
+		)
 	case skullTickMsg:
 		if v.dismissed {
 			return v, nil
