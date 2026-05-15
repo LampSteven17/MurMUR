@@ -23,7 +23,10 @@ var builtinImages = []Image{
 	// `nocloud_*-cloudinit-*` variant ships the real cloud-init from Pypi
 	// and DOES process bootcmd/runcmd/packages/apk_repos. PVE's cidata drive
 	// is exactly the NoCloud datasource, so this variant Just Works.
-	{Name: "alpine-3.20", Distro: "alpine", URL: "https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/cloud/nocloud_alpine-3.20.9-x86_64-bios-cloudinit-r0.qcow2"},
+	//
+	// Version chosen to match PVE's pveam appliance repo so LXC deploys hit
+	// an exact-name match instead of needing the fuzzy-fallback path.
+	{Name: "alpine-3.23", Distro: "alpine", URL: "https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/cloud/nocloud_alpine-3.23.4-x86_64-bios-cloudinit-r0.qcow2"},
 }
 
 // Builtin distro → cloud-init default user.

@@ -118,7 +118,7 @@ func New(cfg *config.Config, client *proxmox.Client, configPath string) *App {
 		{name: "apps", label: "apps", keyLabel: "a", action: true, make: func() View { return NewAppsView(cfg, client, configPath) }},
 		{name: "deploy", label: "deploy", keyLabel: "d", action: true, make: func() View { return NewDeployView(cfg, client) }},
 		{name: "teardown", label: "teardown", keyLabel: "t", action: true, make: func() View { return NewTeardownView(cfg, client) }},
-		{name: "update", label: "update", keyLabel: "u", action: true, make: func() View { return nil }},
+		{name: "update", label: "update", keyLabel: "u", action: true, make: func() View { return NewUpdateView(cfg, client) }},
 		{name: "overview", label: "overview", keyLabel: "1", make: func() View { return NewOverviewView(cfg, client) }},
 		{name: "vms", label: "VMs", keyLabel: "2", make: func() View { return NewVMsView(cfg, client) }},
 		{name: "lxcs", label: "LXCs", keyLabel: "3", make: func() View { return NewLXCsView(cfg, client) }},

@@ -29,11 +29,15 @@ func formBody(v url.Values) io.Reader {
 //
 //	/^[-%a-zA-Z0-9_.!~*'()]*$/
 //
-// PVE applies this regex to fields like qemu sshkeys / lxc ssh-public-keys
-// AFTER form-decoding once, so it sees the value exactly as we put it in
-// url.Values. Go's stdlib url.QueryEscape uses RFC 1738 form encoding
-// (space → "+"), which fails this regex. Use this helper for any field PVE
-// validates as `format urlencoded`.
+// Use ONLY for fields whose PVE schema sets `format: urlencoded` — most
+// notably qemu's `sshkeys`. Plain `type: string` fields (e.g. LXC's
+// `ssh-public-keys`) do NOT go through this validator and want raw values;
+// passing them through StrictPercentEncode breaks PVE's downstream
+// validator (e.g. ssh-keygen on the LXC field).
+//
+// Go's stdlib url.QueryEscape uses RFC 1738 form encoding (space → "+"),
+// which fails the unreserved-only regex on its own. So for urlencoded
+// fields, pre-encode with this helper, then let url.Values do its thing.
 func StrictPercentEncode(s string) string {
 	const hex = "0123456789ABCDEF"
 	var b strings.Builder

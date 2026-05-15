@@ -432,7 +432,7 @@ func (o *Orchestrator) deployLXC(ctx context.Context, r resolvedRequest) (*Resul
 	}
 	o.emit(StepResolve, fmt.Sprintf("target node %s", targetNode), 20)
 
-	tplVolID, err := o.findLXCTemplate(ctx, r.image.Name, targetNode)
+	tplVolID, err := o.EnsureLXCTemplate(ctx, r.image, targetNode)
 	if err != nil {
 		return nil, err
 	}

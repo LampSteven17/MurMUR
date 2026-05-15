@@ -502,12 +502,8 @@ func (v *TeardownView) renderSection(label string, idxs []int, isTemplate bool) 
 	if sel > 0 {
 		count = fmt.Sprintf("(%d of %d selected)", sel, len(idxs))
 	}
-	marker := ""
-	if isTemplate {
-		marker = "  " + lipgloss.NewStyle().Foreground(DefaultTheme.Gold).Render("⚠")
-	}
 	header := v.styles.Title.Render(strings.ToUpper(label)) + "  " +
-		v.styles.Subtle.Render(count) + marker
+		v.styles.Subtle.Render(count)
 
 	lines := []string{header}
 	for _, i := range idxs {
@@ -547,7 +543,10 @@ func (v *TeardownView) renderRow(i int, isTemplate bool) string {
 		muted.Render(padRight(truncate(r.Node, 14), 14)),
 		statusStyle.Render(padRight(r.Status, 8)),
 	)
-	if isTemplate {
+	// Warning glyph means "unusual state worth flagging". Templates are
+	// always stopped — that's the normal/expected state, no flag. A regular
+	// VM/LXC that's stopped is noteworthy.
+	if !isTemplate && r.Status == "stopped" {
 		row += "  " + lipgloss.NewStyle().Foreground(DefaultTheme.Gold).Render("⚠")
 	}
 	return row

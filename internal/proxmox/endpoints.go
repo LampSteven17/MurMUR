@@ -110,6 +110,80 @@ type NodeTask struct {
 	EndTime   int64  `json:"endtime,omitempty"` // 0 if still running
 }
 
+// Appliance is one row from GET /nodes/{n}/aplinfo — a downloadable LXC
+// template from PVE's curated repository. Used by aplinfo POST to fetch a
+// vztmpl into storage.
+type Appliance struct {
+	Template     string `json:"template"`     // "debian-13-standard_13.1-2_amd64.tar.zst"
+	OS           string `json:"os"`           // "debian-13" — the natural join key with our image catalog
+	Section      string `json:"section"`      // "system" | "turnkeylinux" | ...
+	Package      string `json:"package"`      // "debian-13-standard"
+	Version      string `json:"version"`      // "13.1-2"
+	Architecture string `json:"architecture"` // "amd64"
+	Description  string `json:"description,omitempty"`
+	Headline     string `json:"headline,omitempty"`
+	Location     string `json:"location,omitempty"`
+}
+
+// ListAppliances returns all downloadable LXC templates known to PVE
+// (equivalent to `pveam available`). Bulk list; filter on the caller side.
+func (c *Client) ListAppliances(ctx context.Context, node string) ([]Appliance, error) {
+	var out []Appliance
+	if err := c.GetJSON(ctx, fmt.Sprintf("/nodes/%s/aplinfo", node), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// DownloadAppliance kicks off `pveam download <storage> <template>` via the
+// API. Returns the UPID; use WaitForTask. The file lands as the volume id
+// "<storage>:vztmpl/<template>" once the task completes.
+func (c *Client) DownloadAppliance(ctx context.Context, node, storage, template string) (string, error) {
+	form := url.Values{}
+	form.Set("storage", storage)
+	form.Set("template", template)
+	raw, err := c.PostForm(ctx, fmt.Sprintf("/nodes/%s/aplinfo", node), form)
+	if err != nil {
+		return "", err
+	}
+	return decodeUPID(raw)
+}
+
+// AptPackage is one row from GET /nodes/{n}/apt/update.
+type AptPackage struct {
+	Package     string `json:"Package"`
+	Title       string `json:"Title,omitempty"`
+	Description string `json:"Description,omitempty"`
+	Section     string `json:"Section,omitempty"`
+	Origin      string `json:"Origin,omitempty"`
+	Priority    string `json:"Priority,omitempty"`
+	Arch        string `json:"Arch,omitempty"`
+	OldVersion  string `json:"OldVersion,omitempty"`
+	Version     string `json:"Version"` // new version available
+}
+
+// ListAptUpdates returns the apt packages currently flagged as upgradable on
+// a node. Reflects the cached package list — call RefreshAptIndex first if
+// you want fresh data.
+func (c *Client) ListAptUpdates(ctx context.Context, node string) ([]AptPackage, error) {
+	var out []AptPackage
+	if err := c.GetJSON(ctx, fmt.Sprintf("/nodes/%s/apt/update", node), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// RefreshAptIndex runs `apt-get update` on the node via PVE. Returns the
+// UPID; use WaitForTask. Equivalent to clicking "Refresh" in PVE web UI
+// per-node Updates tab.
+func (c *Client) RefreshAptIndex(ctx context.Context, node string) (string, error) {
+	raw, err := c.PostForm(ctx, fmt.Sprintf("/nodes/%s/apt/update", node), nil)
+	if err != nil {
+		return "", err
+	}
+	return decodeUPID(raw)
+}
+
 // ListNodeTasks returns tasks for one node. Source selects active|all|archive
 // (default archive). Use "active" to find in-flight ops for transient status.
 func (c *Client) ListNodeTasks(ctx context.Context, node, source string) ([]NodeTask, error) {
@@ -153,6 +227,7 @@ type StorageContent struct {
 	Content string `json:"content"` // iso | vztmpl | images | rootdir | backup
 	Format  string `json:"format,omitempty"`
 	Size    int64  `json:"size,omitempty"`
+	Ctime   int64  `json:"ctime,omitempty"` // unix epoch — file mtime on the storage
 }
 
 // ListStorageContent returns the content of a storage on a node, optionally
@@ -167,6 +242,19 @@ func (c *Client) ListStorageContent(ctx context.Context, node, storage, contentK
 		return nil, err
 	}
 	return out, nil
+}
+
+// DeleteStorageVolume removes a single volume by volid (e.g.
+// "cephfs:import/file.qcow2"). PVE's DELETE for storage content takes the
+// volid as the final path segment, URL-encoded.
+func (c *Client) DeleteStorageVolume(ctx context.Context, node, storage, volid string) (string, error) {
+	path := fmt.Sprintf("/nodes/%s/storage/%s/content/%s", node, storage, url.PathEscape(volid))
+	raw, err := c.Delete(ctx, path, nil)
+	if err != nil {
+		return "", err
+	}
+	upid, _ := decodeUPID(raw)
+	return upid, nil
 }
 
 // DownloadURLToStorage downloads urlToFetch to the named storage on node as a

@@ -24,8 +24,24 @@ type TaskStatus struct {
 // Done reports whether the task has finished executing.
 func (t TaskStatus) Done() bool { return t.Status == "stopped" }
 
-// OK reports whether the task finished successfully.
-func (t TaskStatus) OK() bool { return t.Done() && t.ExitStatus == "OK" }
+// OK reports whether the task finished successfully. PVE returns "OK" on a
+// clean run and "WARNINGS: N" when the task succeeded but flagged something
+// non-fatal (e.g. LXC create note: "Systemd 252 detected. You may need to
+// enable nesting."). Both mean the task's actual work landed — only treat
+// real error strings as failure.
+func (t TaskStatus) OK() bool {
+	if !t.Done() {
+		return false
+	}
+	return t.ExitStatus == "OK" || strings.HasPrefix(t.ExitStatus, "WARNINGS:")
+}
+
+// Warned reports whether the task finished with PVE warnings. Callers can
+// use this to surface the warning to the operator without treating it as
+// a failure.
+func (t TaskStatus) Warned() bool {
+	return t.Done() && strings.HasPrefix(t.ExitStatus, "WARNINGS:")
+}
 
 // parseUPIDNode extracts the node name from a UPID string.
 // UPID format: "UPID:<node>:<pid_hex>:<pstart_hex>:<starttime_hex>:<dtype>:<id>:<user>:".

@@ -87,9 +87,12 @@ func (c *Client) CreateLXC(ctx context.Context, r CreateLXCRequest) (string, err
 	form.Set("net0", strings.Join(netParts, ","))
 
 	if len(r.SSHKeys) > 0 {
-		// Strict RFC-3986 encoding — see StrictPercentEncode in client.go for
-		// why QueryEscape's space-as-`+` fails PVE's urlencoded format check.
-		form.Set("ssh-public-keys", StrictPercentEncode(strings.Join(r.SSHKeys, "\n")))
+		// LXC's ssh-public-keys field is plain OpenSSH text (one key per
+		// line) — type:string with no format constraint. PVE runs ssh-keygen
+		// -l -f against each line, so we send the raw key. (Contrast with
+		// VM's sshkeys, which IS format=urlencoded and needs
+		// StrictPercentEncode — different field, different validator.)
+		form.Set("ssh-public-keys", strings.Join(r.SSHKeys, "\n"))
 	}
 	if r.Password != "" {
 		form.Set("password", r.Password)
