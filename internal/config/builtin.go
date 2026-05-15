@@ -5,7 +5,6 @@ var builtinFlavors = []Flavor{
 	{Name: "1vcpu.2gb", CPU: 1, MemoryMB: 2048, DiskGB: 16},
 	{Name: "2vcpu.4gb", CPU: 2, MemoryMB: 4096, DiskGB: 32},
 	{Name: "4vcpu.8gb", CPU: 4, MemoryMB: 8192, DiskGB: 64},
-	{Name: "8vcpu.16gb", CPU: 8, MemoryMB: 16384, DiskGB: 128},
 }
 
 // Builtin image catalog. URLs intentionally point at "latest" channels;
@@ -13,9 +12,18 @@ var builtinFlavors = []Flavor{
 var builtinImages = []Image{
 	{Name: "debian-13", Distro: "debian", URL: "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-amd64.qcow2"},
 	{Name: "debian-12", Distro: "debian", URL: "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2"},
+	{Name: "ubuntu-26.04", Distro: "ubuntu", URL: "https://cloud-images.ubuntu.com/resolute/current/resolute-server-cloudimg-amd64.img"},
 	{Name: "ubuntu-24.04", Distro: "ubuntu", URL: "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"},
-	{Name: "fedora-41", Distro: "fedora", URL: "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-41-1.4.x86_64.qcow2"},
-	{Name: "alpine-3.20", Distro: "alpine", URL: "https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/cloud/generic_alpine-3.20.3-x86_64-bios-cloudinit-r0.qcow2"},
+	{Name: "ubuntu-22.04", Distro: "ubuntu", URL: "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"},
+	{Name: "fedora-43", Distro: "fedora", URL: "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-43-1.6.x86_64.qcow2"},
+	// Alpine has two parallel image families: `generic_*-cloudinit-*` is
+	// historically misnamed and actually ships tiny-cloud (a minimal Alpine
+	// bootstrap that reads metadata but does NOT execute cloud-config
+	// directives — so our agent-install snippet is silently ignored). The
+	// `nocloud_*-cloudinit-*` variant ships the real cloud-init from Pypi
+	// and DOES process bootcmd/runcmd/packages/apk_repos. PVE's cidata drive
+	// is exactly the NoCloud datasource, so this variant Just Works.
+	{Name: "alpine-3.20", Distro: "alpine", URL: "https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/cloud/nocloud_alpine-3.20.9-x86_64-bios-cloudinit-r0.qcow2"},
 }
 
 // Builtin distro → cloud-init default user.

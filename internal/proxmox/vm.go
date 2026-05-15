@@ -8,6 +8,133 @@ import (
 	"strings"
 )
 
+// CreateVMRequest creates a new VM via POST /nodes/{n}/qemu. Optional fields
+// are emitted only if non-zero/non-empty. The typical template-build pattern
+// passes SCSI0Import as a volume id (e.g. "cephfs:iso/debian-13.qcow2") so
+// the create operation imports the cloud-image disk in one shot.
+type CreateVMRequest struct {
+	Node   string
+	VMID   int
+	Name   string
+	Cores  int
+	Memory int // MB
+
+	// Firmware / machine type. Defaults are fine for cloud-image templates.
+	BIOS    string // "ovmf" for UEFI; "" → SeaBIOS
+	Machine string // "q35" for modern PCIe; "" → default
+
+	// SCSI disk. SCSI0Import accepts an absolute path or a storage volume id
+	// (e.g. "cephfs:iso/debian-13.qcow2") — PVE imports it on create.
+	SCSIHW       string // "virtio-scsi-pci" recommended
+	SCSI0Storage string // target storage for the imported disk, e.g. "ceph-rbd"
+	SCSI0Import  string // source volume / path to import
+
+	// Cloud-init drive. Format: "STORAGE:cloudinit".
+	IDE2CloudInit string
+
+	// Network. Format: "virtio,bridge=vmbr0[,tag=N]".
+	Net0 string
+
+	// Boot order. "order=scsi0" is correct for the disk pattern above.
+	Boot string
+
+	// Console.
+	Serial0 string // "socket"
+	VGA     string // "serial0" routes console to serial0
+
+	// Misc.
+	Agent       string // "enabled=1"
+	OSType      string // "l26" for modern Linux
+	CPU         string // "host" for nested perf
+	Description string
+	Tags        string
+}
+
+// CreateVM creates a VM. Returns the UPID; use WaitForTask.
+func (c *Client) CreateVM(ctx context.Context, r CreateVMRequest) (string, error) {
+	if r.Node == "" || r.VMID == 0 {
+		return "", fmt.Errorf("proxmox: CreateVM: Node and VMID are required")
+	}
+	form := url.Values{}
+	form.Set("vmid", strconv.Itoa(r.VMID))
+	if r.Name != "" {
+		form.Set("name", r.Name)
+	}
+	if r.Cores > 0 {
+		form.Set("cores", strconv.Itoa(r.Cores))
+	}
+	if r.Memory > 0 {
+		form.Set("memory", strconv.Itoa(r.Memory))
+	}
+	if r.BIOS != "" {
+		form.Set("bios", r.BIOS)
+	}
+	if r.Machine != "" {
+		form.Set("machine", r.Machine)
+	}
+	if r.SCSIHW != "" {
+		form.Set("scsihw", r.SCSIHW)
+	}
+	if r.SCSI0Import != "" {
+		storage := r.SCSI0Storage
+		if storage == "" {
+			storage = "local"
+		}
+		form.Set("scsi0", fmt.Sprintf("%s:0,import-from=%s,discard=on,ssd=1", storage, r.SCSI0Import))
+	}
+	if r.IDE2CloudInit != "" {
+		form.Set("ide2", r.IDE2CloudInit)
+	}
+	if r.Net0 != "" {
+		form.Set("net0", r.Net0)
+	}
+	if r.Boot != "" {
+		form.Set("boot", r.Boot)
+	}
+	if r.Serial0 != "" {
+		form.Set("serial0", r.Serial0)
+	}
+	if r.VGA != "" {
+		form.Set("vga", r.VGA)
+	}
+	if r.Agent != "" {
+		form.Set("agent", r.Agent)
+	}
+	if r.OSType != "" {
+		form.Set("ostype", r.OSType)
+	}
+	if r.CPU != "" {
+		form.Set("cpu", r.CPU)
+	}
+	if r.Description != "" {
+		form.Set("description", r.Description)
+	}
+	if r.Tags != "" {
+		form.Set("tags", r.Tags)
+	}
+	path := fmt.Sprintf("/nodes/%s/qemu", r.Node)
+	raw, err := c.PostForm(ctx, path, form)
+	if err != nil {
+		return "", err
+	}
+	return decodeUPID(raw)
+}
+
+// ConvertVMToTemplate marks a VM as a template (POST /qemu/{vmid}/template).
+// PVE returns the UPID for the conversion task (which performs base-disk
+// snapshotting on supported storages).
+func (c *Client) ConvertVMToTemplate(ctx context.Context, node string, vmid int) (string, error) {
+	path := fmt.Sprintf("/nodes/%s/qemu/%d/template", node, vmid)
+	raw, err := c.PostForm(ctx, path, nil)
+	if err != nil {
+		return "", err
+	}
+	// PVE returns null body when template conversion is synchronous on the
+	// storage; otherwise a UPID. Tolerate both.
+	upid, _ := decodeUPID(raw)
+	return upid, nil
+}
+
 // CloneVMRequest clones SourceVMID on SourceNode into NewVMID on TargetNode.
 // SourceNode is required because clone is a per-node endpoint; TargetNode may
 // equal SourceNode for same-host clones. The source VM is typically a
@@ -95,6 +222,13 @@ type CloudInitConfig struct {
 	IPConfig0    string   // ipconfig0, e.g. "ip=dhcp" or "ip=10.0.0.50/24,gw=10.0.0.1"
 	Nameserver   string   // nameserver
 	SearchDomain string   // searchdomain
+
+	// CICustom is PVE's cicustom string, e.g.
+	//   "vendor=cephfs:snippets/cloud-init-ubuntu.yml"
+	// vendor= is appended to the auto-generated user-data, keeping User/
+	// SSHKeys/IPConfig0 intact while letting a snippet install qemu-guest-
+	// agent (or similar). user= would REPLACE the auto-generated data.
+	CICustom string
 }
 
 // ConfigureVMCloudInit sets cloud-init keys on a VM. Idempotent; only
@@ -108,10 +242,11 @@ func (c *Client) ConfigureVMCloudInit(ctx context.Context, node string, vmid int
 		cfg["cipassword"] = ci.Password
 	}
 	if len(ci.SSHKeys) > 0 {
-		// ProxMox expects sshkeys URL-encoded once at the application layer;
-		// the form encoder URL-encodes again, and ProxMox decodes once on
-		// receipt, leaving our QueryEscape'd value for ProxMox to decode.
-		cfg["sshkeys"] = url.QueryEscape(strings.Join(ci.SSHKeys, "\n"))
+		// PVE form-decodes once, then validates the resulting string against
+		// the `urlencoded` format regex (unreserved + %, no `+` for spaces).
+		// QueryEscape uses form-encoding (space → +) which fails the regex —
+		// StrictPercentEncode does RFC 3986 unreserved-only encoding.
+		cfg["sshkeys"] = StrictPercentEncode(strings.Join(ci.SSHKeys, "\n"))
 	}
 	if ci.IPConfig0 != "" {
 		cfg["ipconfig0"] = ci.IPConfig0
@@ -121,6 +256,9 @@ func (c *Client) ConfigureVMCloudInit(ctx context.Context, node string, vmid int
 	}
 	if ci.SearchDomain != "" {
 		cfg["searchdomain"] = ci.SearchDomain
+	}
+	if ci.CICustom != "" {
+		cfg["cicustom"] = ci.CICustom
 	}
 	return c.SetVMConfig(ctx, node, vmid, cfg)
 }

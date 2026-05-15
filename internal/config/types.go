@@ -4,9 +4,24 @@ type Config struct {
 	Cluster         Cluster          `yaml:"cluster"`
 	Flavors         []Flavor         `yaml:"flavors"`
 	Images          []Image          `yaml:"images"`
+	Apps            []App            `yaml:"apps,omitempty"`
 	ReverseProxy    *ReverseProxy    `yaml:"reverse_proxy,omitempty"`
 	Monitoring      *Monitoring      `yaml:"monitoring,omitempty"`
 	StorageBackends []StorageBackend `yaml:"storage_backends"`
+}
+
+// App is a declarative VM-plus-configuration unit. Pick an app in the [a]apps
+// tab and murmur provisions a guest matching Image/Flavor, then runs the
+// post-deploy step (a Playbook path or a raw PostDeploy shell command).
+//
+// Exactly one of Playbook or PostDeploy may be set, both can be empty
+// (provision-only, no configuration). Validation enforces this.
+type App struct {
+	Name       string `yaml:"name"`
+	Image      string `yaml:"image"`
+	Flavor     string `yaml:"flavor"`
+	Playbook   string `yaml:"playbook,omitempty"`    // ansible playbook path (relative to config dir)
+	PostDeploy string `yaml:"post_deploy,omitempty"` // raw shell command (alternative to Playbook)
 }
 
 type Cluster struct {
@@ -46,6 +61,12 @@ type Network struct {
 type SSH struct {
 	Identity string            `yaml:"identity"`
 	Users    map[string]string `yaml:"users"`
+
+	// Password is an optional cloud-init guest password. Either Identity (key
+	// auth) or Password (password auth) — or both — must be set for VM
+	// deploys. Reference cluster.env via ${VAR} for the actual secret so it
+	// stays out of the committed cluster.yaml.
+	Password string `yaml:"password,omitempty"`
 }
 
 type Flavor struct {

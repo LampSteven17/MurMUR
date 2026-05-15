@@ -41,10 +41,18 @@ cluster:
     default_bridge: vmbr0
     default_vlan: null             # set if cluster uses VLAN tagging by default
 
-  # Cloud-init default usernames per distro. murmur picks the right one
-  # based on the image being provisioned. Extends the builtin map.
+  # Guest auth + per-distro defaults for cloud-init.
+  #
+  # AT LEAST ONE of `identity` (key) or `password` (password) must be set
+  # for VM deploys, otherwise the guest is unreachable. Both can coexist —
+  # the guest accepts either.
+  #
+  # Convention: keep per-operator values (paths, secrets) out of this file
+  # by using ${VAR} references resolved from cluster.env. Then cluster.yaml
+  # stays identical across operators and only cluster.env differs.
   ssh:
-    identity: ~/.ssh/id_rsa
+    identity: ${SSH_IDENTITY}            # private key path; .pub is injected to cloud-init
+    # password: ${GUEST_DEFAULT_PASSWORD} # uncomment + define in cluster.env to enable password auth
     users:
       # fedora/debian/ubuntu/alpine/rocky/arch are builtin; override here
       alpine: root

@@ -5,10 +5,15 @@ import (
 )
 
 // ClusterDataMsg is dispatched when an async fetch of cluster state completes.
-// Either Err is set, or Version+Resources are set.
+// Either Err is set, or Version+Resources are set. IPs and Statuses are
+// best-effort — IPs is empty for guests whose agent isn't reporting;
+// Statuses is empty when no transient ops are in flight (callers fall back
+// to Resource.Status for the steady-state value).
 type ClusterDataMsg struct {
 	Version   proxmox.Version
 	Resources []proxmox.Resource
+	IPs       map[int]string // VMID → IPv4
+	Statuses  map[int]string // VMID → transient status (starting, rebooting, …)
 	Err       error
 }
 

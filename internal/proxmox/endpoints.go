@@ -3,6 +3,7 @@ package proxmox
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 )
@@ -97,6 +98,32 @@ func (c *Client) GetStorages(ctx context.Context) ([]StorageEntry, error) {
 	return out, nil
 }
 
+// NodeTask is one entry from GET /nodes/{n}/tasks.
+type NodeTask struct {
+	UPID      string `json:"upid"`
+	Node      string `json:"node"`
+	Type      string `json:"type"`              // qmstart | qmstop | vzdump | …
+	ID        string `json:"id,omitempty"`      // VMID as string when applicable
+	User      string `json:"user"`
+	Status    string `json:"status,omitempty"`
+	StartTime int64  `json:"starttime,omitempty"`
+	EndTime   int64  `json:"endtime,omitempty"` // 0 if still running
+}
+
+// ListNodeTasks returns tasks for one node. Source selects active|all|archive
+// (default archive). Use "active" to find in-flight ops for transient status.
+func (c *Client) ListNodeTasks(ctx context.Context, node, source string) ([]NodeTask, error) {
+	path := fmt.Sprintf("/nodes/%s/tasks", node)
+	if source != "" {
+		path += "?source=" + source
+	}
+	var out []NodeTask
+	if err := c.GetJSON(ctx, path, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GetNodes returns /nodes.
 func (c *Client) GetNodes(ctx context.Context) ([]NodeStatus, error) {
 	var out []NodeStatus
@@ -104,6 +131,62 @@ func (c *Client) GetNodes(ctx context.Context) ([]NodeStatus, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// NextVMID returns the next free VMID per /cluster/nextid. ProxMox returns it
+// as a JSON string; we parse to int.
+func (c *Client) NextVMID(ctx context.Context) (int, error) {
+	var s string
+	if err := c.GetJSON(ctx, "/cluster/nextid", &s); err != nil {
+		return 0, err
+	}
+	var n int
+	if _, err := fmt.Sscanf(s, "%d", &n); err != nil {
+		return 0, fmt.Errorf("proxmox: NextVMID: parsing %q: %w", s, err)
+	}
+	return n, nil
+}
+
+// StorageContent is one entry from GET /nodes/{n}/storage/{s}/content.
+type StorageContent struct {
+	VolID   string `json:"volid"`   // e.g. "cephfs:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"
+	Content string `json:"content"` // iso | vztmpl | images | rootdir | backup
+	Format  string `json:"format,omitempty"`
+	Size    int64  `json:"size,omitempty"`
+}
+
+// ListStorageContent returns the content of a storage on a node, optionally
+// filtered by content kind (iso | vztmpl | images | rootdir | backup).
+func (c *Client) ListStorageContent(ctx context.Context, node, storage, contentKind string) ([]StorageContent, error) {
+	path := fmt.Sprintf("/nodes/%s/storage/%s/content", node, storage)
+	if contentKind != "" {
+		path += "?content=" + contentKind
+	}
+	var out []StorageContent
+	if err := c.GetJSON(ctx, path, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// DownloadURLToStorage downloads urlToFetch to the named storage on node as a
+// file of the given content kind ("iso" for cloud-image qcow2/img,
+// "vztmpl" for LXC template tarballs). Returns the UPID; the file lands as
+// volume "<storage>:<content>/<filename>" once the task completes.
+func (c *Client) DownloadURLToStorage(ctx context.Context, node, storage, urlToFetch, content, filename string) (string, error) {
+	if node == "" || storage == "" || urlToFetch == "" || content == "" || filename == "" {
+		return "", fmt.Errorf("proxmox: DownloadURLToStorage: node/storage/url/content/filename all required")
+	}
+	form := url.Values{}
+	form.Set("url", urlToFetch)
+	form.Set("content", content)
+	form.Set("filename", filename)
+	path := fmt.Sprintf("/nodes/%s/storage/%s/download-url", node, storage)
+	raw, err := c.PostForm(ctx, path, form)
+	if err != nil {
+		return "", err
+	}
+	return decodeUPID(raw)
 }
 
 // EnsureStorages verifies that every required storage ID exists on the cluster.

@@ -101,6 +101,8 @@ func (v *WelcomeView) View(width, height int) string {
 
 func (v *WelcomeView) Title() string { return "welcome" }
 
+func (v *WelcomeView) CapturesKeys() bool { return false }
+
 func (v *WelcomeView) Help() []key.Binding { return nil }
 
 // renderLaugh returns the laugh-tag line, centered to the skull frame width.

@@ -169,6 +169,8 @@ func (v *NodesView) View(width, height int) string {
 
 func (v *NodesView) Title() string { return "nodes" }
 
+func (v *NodesView) CapturesKeys() bool { return false }
+
 func (v *NodesView) Help() []key.Binding {
 	return []key.Binding{
 		key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),

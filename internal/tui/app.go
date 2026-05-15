@@ -31,6 +31,11 @@ type View interface {
 	View(width, height int) string
 	Title() string
 	Help() []key.Binding
+	// CapturesKeys signals that the view is in a text-entry mode (e.g. a
+	// focused textinput) and wants ALL key events delivered raw. While true,
+	// app-level shortcuts (tab keys, refresh, help, q) are bypassed; only
+	// ctrl+c still quits.
+	CapturesKeys() bool
 }
 
 // KeyMap is the set of app-level keybindings. Per-view keys live on the view.
@@ -43,6 +48,7 @@ type KeyMap struct {
 	Tab3     key.Binding
 	Tab4     key.Binding
 	Tab5     key.Binding
+	Apps     key.Binding
 	Deploy   key.Binding
 	Teardown key.Binding
 	Update   key.Binding
@@ -58,6 +64,7 @@ func DefaultKeyMap() KeyMap {
 		Tab3:     key.NewBinding(key.WithKeys("3"), key.WithHelp("3", "LXCs")),
 		Tab4:     key.NewBinding(key.WithKeys("4"), key.WithHelp("4", "nodes")),
 		Tab5:     key.NewBinding(key.WithKeys("5"), key.WithHelp("5", "templates")),
+		Apps:     key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "apps")),
 		Deploy:   key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "deploy")),
 		Teardown: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "teardown")),
 		Update:   key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "update")),
@@ -108,8 +115,9 @@ func New(cfg *config.Config, client *proxmox.Client, configPath string) *App {
 		tabCache:   map[string]View{},
 	}
 	a.tabs = []tabSpec{
-		{name: "deploy", label: "deploy", keyLabel: "d", action: true, make: func() View { return nil }},
-		{name: "teardown", label: "teardown", keyLabel: "t", action: true, make: func() View { return nil }},
+		{name: "apps", label: "apps", keyLabel: "a", action: true, make: func() View { return NewAppsView(cfg, client, configPath) }},
+		{name: "deploy", label: "deploy", keyLabel: "d", action: true, make: func() View { return NewDeployView(cfg, client) }},
+		{name: "teardown", label: "teardown", keyLabel: "t", action: true, make: func() View { return NewTeardownView(cfg, client) }},
 		{name: "update", label: "update", keyLabel: "u", action: true, make: func() View { return nil }},
 		{name: "overview", label: "overview", keyLabel: "1", make: func() View { return NewOverviewView(cfg, client) }},
 		{name: "vms", label: "VMs", keyLabel: "2", make: func() View { return NewVMsView(cfg, client) }},
@@ -165,6 +173,16 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyMsg:
+		// In text-entry modes the view consumes raw keys; only ctrl+c (a
+		// terminal convention, not typeable) still escapes.
+		if a.top().CapturesKeys() {
+			if m.Type == tea.KeyCtrlC {
+				return a, tea.Quit
+			}
+			v, cmd := a.top().Update(msg)
+			a.replaceTop(v)
+			return a, cmd
+		}
 		// App-level keys: always quit/help. Tab keys only at stack depth 1.
 		switch {
 		case key.Matches(m, a.keys.Quit):
@@ -189,6 +207,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, a.switchTab("nodes")
 			case key.Matches(m, a.keys.Tab5):
 				return a, a.switchTab("templates")
+			case key.Matches(m, a.keys.Apps):
+				return a, a.switchTab("apps")
 			case key.Matches(m, a.keys.Deploy):
 				return a, a.switchTab("deploy")
 			case key.Matches(m, a.keys.Teardown):
@@ -219,6 +239,7 @@ func (p *placeholderView) Init() tea.Cmd                       { return nil }
 func (p *placeholderView) Update(msg tea.Msg) (View, tea.Cmd)  { return p, nil }
 func (p *placeholderView) Title() string                       { return p.label }
 func (p *placeholderView) Help() []key.Binding                 { return nil }
+func (p *placeholderView) CapturesKeys() bool                  { return false }
 func (p *placeholderView) View(width, height int) string {
 	msg := p.styles.Subtle.Render(Glyph.Empty + " " + p.label + " — not yet inscribed.")
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, msg)
@@ -294,7 +315,7 @@ func (a *App) renderHeader() string {
 
 func (a *App) renderFooter() string {
 	bindings := append(a.top().Help(),
-		a.keys.Deploy, a.keys.Teardown, a.keys.Update,
+		a.keys.Apps, a.keys.Deploy, a.keys.Teardown, a.keys.Update,
 		a.keys.Refresh, a.keys.Help, a.keys.Quit,
 	)
 	divider := a.styles.Subtle.Render(strings.Repeat("─", a.width))

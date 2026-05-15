@@ -24,6 +24,39 @@ func formBody(v url.Values) io.Reader {
 	return strings.NewReader(v.Encode())
 }
 
+// StrictPercentEncode percent-encodes every byte that is not in PVE's
+// unreserved set per /usr/share/perl5/PVE/JSONSchema.pm pve_verify_urlencoded:
+//
+//	/^[-%a-zA-Z0-9_.!~*'()]*$/
+//
+// PVE applies this regex to fields like qemu sshkeys / lxc ssh-public-keys
+// AFTER form-decoding once, so it sees the value exactly as we put it in
+// url.Values. Go's stdlib url.QueryEscape uses RFC 1738 form encoding
+// (space → "+"), which fails this regex. Use this helper for any field PVE
+// validates as `format urlencoded`.
+func StrictPercentEncode(s string) string {
+	const hex = "0123456789ABCDEF"
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case 'a' <= c && c <= 'z',
+			'A' <= c && c <= 'Z',
+			'0' <= c && c <= '9',
+			c == '-', c == '_', c == '.',
+			c == '!', c == '~', c == '*',
+			c == '\'', c == '(', c == ')':
+			b.WriteByte(c)
+		default:
+			b.WriteByte('%')
+			b.WriteByte(hex[c>>4])
+			b.WriteByte(hex[c&0x0f])
+		}
+	}
+	return b.String()
+}
+
 // Config configures a Client.
 type Config struct {
 	// Endpoint is the ProxMox server URL, e.g. "https://10.0.0.12:8006".
@@ -157,9 +190,18 @@ func (c *Client) PutForm(ctx context.Context, path string, form url.Values) (jso
 	return c.do(ctx, http.MethodPut, path, formBody(form))
 }
 
-// Delete issues DELETE path with an optional form-encoded body.
+// Delete issues DELETE path with optional params as a query string. PVE
+// rejects DELETE requests that carry a body ("HTTP 501: Unexpected content
+// for method 'DELETE'"), so we serialise the form into the URL instead.
 func (c *Client) Delete(ctx context.Context, path string, form url.Values) (json.RawMessage, error) {
-	return c.do(ctx, http.MethodDelete, path, formBody(form))
+	if len(form) > 0 {
+		sep := "?"
+		if strings.Contains(path, "?") {
+			sep = "&"
+		}
+		path += sep + form.Encode()
+	}
+	return c.do(ctx, http.MethodDelete, path, nil)
 }
 
 // decodeUPID decodes a `data` field that is a JSON-encoded string (the typical

@@ -59,6 +59,40 @@ func (c *Config) Validate() error {
 		errs = append(errs, "cluster.network.default_bridge is required")
 	}
 
+	// Apps catalog: each app must reference an existing flavor + image, the
+	// name must be unique, and Playbook/PostDeploy are mutually exclusive.
+	flavorByName := map[string]bool{}
+	for _, f := range c.Flavors {
+		flavorByName[f.Name] = true
+	}
+	imageByName := map[string]bool{}
+	for _, im := range c.Images {
+		imageByName[im.Name] = true
+	}
+	seenApps := map[string]bool{}
+	for i, a := range c.Apps {
+		if a.Name == "" {
+			errs = append(errs, fmt.Sprintf("apps[%d].name is required", i))
+		}
+		if seenApps[a.Name] {
+			errs = append(errs, fmt.Sprintf("apps[%d].name %q is duplicated", i, a.Name))
+		}
+		seenApps[a.Name] = true
+		if a.Image == "" {
+			errs = append(errs, fmt.Sprintf("apps[%d].image is required", i))
+		} else if !imageByName[a.Image] {
+			errs = append(errs, fmt.Sprintf("apps[%d].image %q does not exist in the images catalog", i, a.Image))
+		}
+		if a.Flavor == "" {
+			errs = append(errs, fmt.Sprintf("apps[%d].flavor is required", i))
+		} else if !flavorByName[a.Flavor] {
+			errs = append(errs, fmt.Sprintf("apps[%d].flavor %q does not exist in the flavors catalog", i, a.Flavor))
+		}
+		if a.Playbook != "" && a.PostDeploy != "" {
+			errs = append(errs, fmt.Sprintf("apps[%d] %q: only one of playbook or post_deploy may be set", i, a.Name))
+		}
+	}
+
 	for i, b := range c.StorageBackends {
 		switch b.Type {
 		case "smb", "nfs":

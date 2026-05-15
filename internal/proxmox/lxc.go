@@ -87,7 +87,9 @@ func (c *Client) CreateLXC(ctx context.Context, r CreateLXCRequest) (string, err
 	form.Set("net0", strings.Join(netParts, ","))
 
 	if len(r.SSHKeys) > 0 {
-		form.Set("ssh-public-keys", url.QueryEscape(strings.Join(r.SSHKeys, "\n")))
+		// Strict RFC-3986 encoding — see StrictPercentEncode in client.go for
+		// why QueryEscape's space-as-`+` fails PVE's urlencoded format check.
+		form.Set("ssh-public-keys", StrictPercentEncode(strings.Join(r.SSHKeys, "\n")))
 	}
 	if r.Password != "" {
 		form.Set("password", r.Password)
@@ -198,4 +200,45 @@ func (c *Client) DestroyLXC(ctx context.Context, node string, vmid int, purge, d
 		return "", err
 	}
 	return decodeUPID(raw)
+}
+
+// LXCInterface is one entry from /nodes/{n}/lxc/{vmid}/interfaces.
+type LXCInterface struct {
+	Name   string `json:"name"`
+	HWAddr string `json:"hwaddr"`
+	Inet   string `json:"inet,omitempty"`  // "10.0.0.50/24"
+	Inet6  string `json:"inet6,omitempty"` // "fe80::.../64"
+}
+
+// LXCInterfaces returns the network interfaces inside the running container.
+// Empty result while the container is still booting / DHCP hasn't completed.
+func (c *Client) LXCInterfaces(ctx context.Context, node string, vmid int) ([]LXCInterface, error) {
+	var out []LXCInterface
+	path := fmt.Sprintf("/nodes/%s/lxc/%d/interfaces", node, vmid)
+	if err := c.GetJSON(ctx, path, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// FirstLXCIPv4 returns the first non-loopback IPv4 address (without CIDR) from
+// an LXC interfaces list, or "" if none reported yet.
+func FirstLXCIPv4(ifaces []LXCInterface) string {
+	for _, i := range ifaces {
+		if strings.HasPrefix(i.Name, "lo") {
+			continue
+		}
+		if i.Inet == "" {
+			continue
+		}
+		addr := i.Inet
+		if idx := strings.Index(addr, "/"); idx >= 0 {
+			addr = addr[:idx]
+		}
+		if strings.HasPrefix(addr, "127.") {
+			continue
+		}
+		return addr
+	}
+	return ""
 }

@@ -300,6 +300,8 @@ func padRight(s string, width int) string {
 
 func (v *OverviewView) Title() string { return "overview" }
 
+func (v *OverviewView) CapturesKeys() bool { return false }
+
 func (v *OverviewView) Help() []key.Binding { return nil }
 
 // fetch returns a tea.Cmd that calls the API and emits ClusterDataMsg.

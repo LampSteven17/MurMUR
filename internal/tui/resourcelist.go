@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -34,9 +36,11 @@ type ResourceListView struct {
 	mode    resourceMode
 	label   string // "VMs" | "LXCs" | "templates"
 	glyph   string // ⚗ | ☿ | ⚗ (templates reuse VM glyph)
-	table   table.Model
-	rows    []proxmox.Resource // backing rows aligned with table rows
-	loading bool
+	table    table.Model
+	rows     []proxmox.Resource // backing rows aligned with table rows
+	ips      map[int]string     // VMID → IPv4, populated by fetch()
+	statuses map[int]string     // VMID → transient status (e.g. "rebooting"), else ""
+	loading  bool
 	loaded  bool
 	err     error
 	fetched time.Time
@@ -65,10 +69,12 @@ func newResourceList(cfg *config.Config, client *proxmox.Client, mode resourceMo
 		{Title: "", Width: 2}, // status glyph
 		{Title: "name", Width: 20},
 		{Title: "node", Width: 14},
+		{Title: "ip", Width: 15},
 		{Title: "cpu", Width: 6},
 		{Title: "mem", Width: 8},
 		{Title: "disk", Width: 8},
 		{Title: "uptime", Width: 10},
+		{Title: "status", Width: 12},
 	}
 
 	tStyles := table.DefaultStyles()
@@ -142,6 +148,8 @@ func (v *ResourceListView) Update(msg tea.Msg) (View, tea.Cmd) {
 		}
 		v.err = nil
 		v.fetched = time.Now()
+		v.ips = m.IPs
+		v.statuses = m.Statuses
 		v.applyResources(m.Resources)
 		return v, nil
 	}
@@ -167,15 +175,34 @@ func (v *ResourceListView) applyResources(all []proxmox.Resource) {
 
 	rows := make([]table.Row, len(filtered))
 	for i, r := range filtered {
+		ip := ""
+		if v.ips != nil {
+			ip = v.ips[r.VMID]
+		}
+		if ip == "" && r.Status == "running" {
+			ip = "—"
+		}
+		// Status: prefer a transient label (starting/rebooting/destroying/…)
+		// from active-tasks scan; fall back to the steady-state status.
+		// Plain text only — bubbles/table truncates by byte count and would
+		// shred any embedded ANSI escape sequences.
+		statusText := r.Status
+		if v.statuses != nil {
+			if t := v.statuses[r.VMID]; t != "" {
+				statusText = t
+			}
+		}
 		rows[i] = table.Row{
 			fmt.Sprintf("%d", r.VMID),
 			statusGlyph(r.Status),
 			truncate(r.Name, 20),
 			truncate(r.Node, 14),
+			ip,
 			fmt.Sprintf("%dc", int(r.MaxCPU+0.5)),
 			formatBytes(r.MaxMem),
 			formatBytes(r.MaxDisk),
 			formatUptime(r.Uptime),
+			statusText,
 		}
 	}
 	v.table.SetRows(rows)
@@ -228,6 +255,8 @@ func (v *ResourceListView) View(width, height int) string {
 
 func (v *ResourceListView) Title() string { return v.label }
 
+func (v *ResourceListView) CapturesKeys() bool { return false }
+
 func (v *ResourceListView) Help() []key.Binding {
 	return []key.Binding{
 		key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
@@ -249,15 +278,178 @@ func (v *ResourceListView) Selected() (proxmox.Resource, bool) {
 
 func (v *ResourceListView) fetch() tea.Cmd {
 	client := v.client
+	mode := v.mode
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		resources, err := client.GetResources(ctx, "")
 		if err != nil {
 			return ClusterDataMsg{Err: err}
 		}
-		return ClusterDataMsg{Resources: resources}
+		// Fan-out IPs (for running guests) and active-task statuses (cluster-
+		// wide) in parallel. Each runs its own goroutine pool internally.
+		var ips, statuses map[int]string
+		done := make(chan struct{}, 2)
+		go func() {
+			ips = fetchGuestIPs(ctx, client, resources, mode)
+			done <- struct{}{}
+		}()
+		go func() {
+			statuses = fetchActiveStatuses(ctx, client, resources)
+			done <- struct{}{}
+		}()
+		<-done
+		<-done
+		return ClusterDataMsg{Resources: resources, IPs: ips, Statuses: statuses}
 	}
+}
+
+// fetchGuestIPs fan-outs agent / interfaces lookups for running guests that
+// match the view's mode, bounded by a small semaphore to be polite to PVE.
+// Returns a map keyed by VMID; missing entries mean "no IP reported yet".
+func fetchGuestIPs(ctx context.Context, client *proxmox.Client, resources []proxmox.Resource, mode resourceMode) map[int]string {
+	const concurrency = 6
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	out := map[int]string{}
+
+	for _, r := range resources {
+		if r.Template == 1 || r.Status != "running" {
+			continue
+		}
+		// Only fetch for guests this view will render. Templates view never
+		// shows IPs (templates aren't running anyway).
+		switch mode {
+		case modeVMs:
+			if r.Type != "qemu" {
+				continue
+			}
+		case modeLXCs:
+			if r.Type != "lxc" {
+				continue
+			}
+		case modeTemplates:
+			continue
+		}
+
+		wg.Add(1)
+		go func(r proxmox.Resource) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			// Per-call timeout — don't let a single slow guest stall the
+			// whole batch. Most guests respond well under a second; we cap
+			// at 3 to forgive briefly-busy ones without burning the parent.
+			callCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
+
+			var ip string
+			switch r.Type {
+			case "qemu":
+				ifs, err := client.GuestAgentNetInterfaces(callCtx, r.Node, r.VMID)
+				if err == nil {
+					ip = proxmox.FirstIPv4(ifs)
+				}
+			case "lxc":
+				ifs, err := client.LXCInterfaces(callCtx, r.Node, r.VMID)
+				if err == nil {
+					ip = proxmox.FirstLXCIPv4(ifs)
+				}
+			}
+			if ip != "" {
+				mu.Lock()
+				out[r.VMID] = ip
+				mu.Unlock()
+			}
+		}(r)
+	}
+	wg.Wait()
+	return out
+}
+
+// fetchActiveStatuses fans /nodes/{n}/tasks?source=active across online
+// nodes and builds a VMID → transient-status map. Tasks targeting a VMID
+// (qmstart/qmstop/qmreboot/vzdump/…) win over the steady-state status. Bounded
+// concurrency keeps load light when a cluster has many nodes.
+func fetchActiveStatuses(ctx context.Context, client *proxmox.Client, resources []proxmox.Resource) map[int]string {
+	var nodes []string
+	for _, r := range resources {
+		if r.Type == "node" && r.Status == "online" {
+			nodes = append(nodes, r.Node)
+		}
+	}
+	const concurrency = 6
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	out := map[int]string{}
+	for _, n := range nodes {
+		wg.Add(1)
+		go func(node string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			callCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
+			tasks, err := client.ListNodeTasks(callCtx, node, "active")
+			if err != nil {
+				return
+			}
+			for _, t := range tasks {
+				if t.ID == "" {
+					continue
+				}
+				vmid, err := strconv.Atoi(t.ID)
+				if err != nil {
+					continue
+				}
+				if label, ok := taskTypeToStatus(t.Type); ok {
+					mu.Lock()
+					out[vmid] = label
+					mu.Unlock()
+				}
+			}
+		}(n)
+	}
+	wg.Wait()
+	return out
+}
+
+// taskTypeToStatus maps PVE task `type` strings to user-facing status labels.
+// Returns ok=false for tasks we don't expose (config writes, snapshots that
+// don't change run state, etc.) so they don't override the steady status.
+func taskTypeToStatus(t string) (string, bool) {
+	switch t {
+	case "qmstart", "vzstart":
+		return "starting", true
+	case "qmstop", "qmshutdown", "vzstop", "vzshutdown":
+		return "stopping", true
+	case "qmreboot", "vzreboot":
+		return "rebooting", true
+	case "qmreset":
+		return "resetting", true
+	case "qmsuspend":
+		return "suspending", true
+	case "qmresume":
+		return "resuming", true
+	case "qmclone", "vzclone":
+		return "cloning", true
+	case "qmcreate", "vzcreate":
+		return "creating", true
+	case "qmdestroy", "vzdestroy":
+		return "destroying", true
+	case "qmtemplate":
+		return "templating", true
+	case "qmmigrate", "vzmigrate":
+		return "migrating", true
+	case "vzdump":
+		return "backing up", true
+	case "qmrestore", "vzrestore":
+		return "restoring", true
+	}
+	return "", false
 }
 
 // statusGlyph maps a ProxMox status string to an alchemical glyph.
