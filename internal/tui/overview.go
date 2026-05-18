@@ -328,8 +328,15 @@ func (v *OverviewView) fetch() tea.Cmd {
 // online nodes), plus their current cpu/mem/disk usage which approximates
 // "what's actually consumed right now". VM+LXC rows give per-guest
 // allocations; summing the running ones gives "what's spoken for".
+//
+// Storage rows are deduped by storage name: Proxmox returns one row per
+// (storage, node) pair, so a shared pool visible on N nodes shows up N
+// times. Without dedupe the cluster-wide DiskTotal/DiskUsed are inflated
+// by the share-count of every shared storage. First-seen wins; the dedup
+// is by `storage` field on the row (the storage id, not the node).
 func computeStats(resources []proxmox.Resource) clusterStats {
 	var s clusterStats
+	seenStorage := map[string]bool{}
 	for _, r := range resources {
 		switch r.Type {
 		case "node":
@@ -369,6 +376,16 @@ func computeStats(resources []proxmox.Resource) clusterStats {
 				s.LXCsStopped++
 			}
 		case "storage":
+			// Dedupe by storage name. r.Storage is the storage id;
+			// fall back to r.ID for rows where the API didn't echo it.
+			key := r.Storage
+			if key == "" {
+				key = r.ID
+			}
+			if seenStorage[key] {
+				continue
+			}
+			seenStorage[key] = true
 			s.StorageCount++
 			s.DiskTotal += r.MaxDisk
 			s.DiskUsed += r.Disk

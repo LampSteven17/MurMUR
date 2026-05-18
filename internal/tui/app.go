@@ -52,6 +52,7 @@ type KeyMap struct {
 	Deploy   key.Binding
 	Teardown key.Binding
 	Update   key.Binding
+	Patch    key.Binding
 }
 
 func DefaultKeyMap() KeyMap {
@@ -68,6 +69,7 @@ func DefaultKeyMap() KeyMap {
 		Deploy:   key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "deploy")),
 		Teardown: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "teardown")),
 		Update:   key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "update")),
+		Patch:    key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "patch")),
 	}
 }
 
@@ -119,6 +121,7 @@ func New(cfg *config.Config, client *proxmox.Client, configPath string) *App {
 		{name: "deploy", label: "deploy", keyLabel: "d", action: true, make: func() View { return NewDeployView(cfg, client) }},
 		{name: "teardown", label: "teardown", keyLabel: "t", action: true, make: func() View { return NewTeardownView(cfg, client) }},
 		{name: "update", label: "update", keyLabel: "u", action: true, make: func() View { return NewUpdateView(cfg, client) }},
+		{name: "patch", label: "patch", keyLabel: "p", action: true, make: func() View { return NewPatchView(cfg, client) }},
 		{name: "overview", label: "overview", keyLabel: "1", make: func() View { return NewOverviewView(cfg, client) }},
 		{name: "vms", label: "VMs", keyLabel: "2", make: func() View { return NewVMsView(cfg, client) }},
 		{name: "lxcs", label: "LXCs", keyLabel: "3", make: func() View { return NewLXCsView(cfg, client) }},
@@ -215,6 +218,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, a.switchTab("teardown")
 			case key.Matches(m, a.keys.Update):
 				return a, a.switchTab("update")
+			case key.Matches(m, a.keys.Patch):
+				return a, a.switchTab("patch")
 			}
 		}
 	}
@@ -315,7 +320,7 @@ func (a *App) renderHeader() string {
 
 func (a *App) renderFooter() string {
 	bindings := append(a.top().Help(),
-		a.keys.Apps, a.keys.Deploy, a.keys.Teardown, a.keys.Update,
+		a.keys.Apps, a.keys.Deploy, a.keys.Teardown, a.keys.Update, a.keys.Patch,
 		a.keys.Refresh, a.keys.Help, a.keys.Quit,
 	)
 	divider := a.styles.Subtle.Render(strings.Repeat("─", a.width))

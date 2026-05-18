@@ -38,6 +38,36 @@ func (c *Client) GuestAgentNetInterfaces(ctx context.Context, node string, vmid 
 	return r.Result, nil
 }
 
+// AgentOSInfo is what /qemu/{vmid}/agent/get-osinfo reports. Requires the
+// qemu-guest-agent inside the guest. Useful for showing the *actual* OS
+// (vs whatever the deploy catalog claimed).
+type AgentOSInfo struct {
+	ID         string `json:"id"`             // e.g. "ubuntu", "debian"
+	Name       string `json:"name"`           // e.g. "Ubuntu"
+	PrettyName string `json:"pretty-name"`    // e.g. "Ubuntu 24.04.4 LTS"
+	VersionID  string `json:"version-id"`     // e.g. "24.04"
+	Kernel     string `json:"kernel-release,omitempty"`
+	Machine    string `json:"machine,omitempty"`
+}
+
+// agentOSInfoResponse mirrors the inner-result wrapping PVE puts around guest
+// agent responses (alongside the outer `data` envelope our `do()` already
+// strips).
+type agentOSInfoResponse struct {
+	Result AgentOSInfo `json:"result"`
+}
+
+// GuestAgentOSInfo returns the OS info the guest agent reports. Errors out
+// (rather than returning a partial struct) when the agent is unreachable.
+func (c *Client) GuestAgentOSInfo(ctx context.Context, node string, vmid int) (AgentOSInfo, error) {
+	var r agentOSInfoResponse
+	path := fmt.Sprintf("/nodes/%s/qemu/%d/agent/get-osinfo", node, vmid)
+	if err := c.GetJSON(ctx, path, &r); err != nil {
+		return AgentOSInfo{}, err
+	}
+	return r.Result, nil
+}
+
 // FirstIPv4 returns the first non-loopback IPv4 address reported by the guest
 // agent. Empty string if none are found yet (boot still in progress, agent
 // not running, etc.).

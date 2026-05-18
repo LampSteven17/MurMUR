@@ -64,7 +64,7 @@ func (o *Orchestrator) UpgradeHost(ctx context.Context, node string) error {
 		"-o Dpkg::Options::='--force-confold' dist-upgrade && " +
 		"echo '__MURMUR_OK__'"
 
-	if err := o.sshStream(ctx, node, upgradeCmd, 30*time.Minute); err != nil {
+	if err := o.sshStream(ctx, "root@"+node, upgradeCmd, 30*time.Minute); err != nil {
 		return fmt.Errorf("upgrade %s: %w", node, err)
 	}
 	o.emit(StepConfigure, fmt.Sprintf("upgrade completed on %s", node), 70)
@@ -103,10 +103,17 @@ func (o *Orchestrator) UpgradeHost(ctx context.Context, node string) error {
 	return nil
 }
 
-// sshStream shells out to `ssh root@node <cmd>` and pumps stdout+stderr
-// line-by-line into the orchestrator's progress callback as StepConfigure
-// events. Non-zero exit → error. timeoutForCommand caps wall-clock.
-func (o *Orchestrator) sshStream(ctx context.Context, node, command string, timeoutForCommand time.Duration) error {
+// sshStream shells out to `ssh <target> <cmd>` (target is user@host) and
+// pumps stdout+stderr line-by-line into the orchestrator's progress
+// callback as StepConfigure events. Non-zero exit → error.
+// timeoutForCommand caps wall-clock.
+//
+// Progress percentage asymptotes from 20% → ~95% as output flows in, so the
+// TUI bar visibly advances during long operations (apt update, docker pull)
+// without claiming completion. Stderr is NOT prefixed: docker, apt, and many
+// other tools write legitimate progress info to stderr, and tagging it as
+// "err:" trains operators to ignore real errors when they happen.
+func (o *Orchestrator) sshStream(ctx context.Context, target, command string, timeoutForCommand time.Duration) error {
 	sshCtx, cancel := context.WithTimeout(ctx, timeoutForCommand)
 	defer cancel()
 
@@ -115,7 +122,7 @@ func (o *Orchestrator) sshStream(ctx context.Context, node, command string, time
 		"-o", "ConnectTimeout=10",
 		"-o", "StrictHostKeyChecking=accept-new",
 		"-o", "ServerAliveInterval=30",
-		"root@"+node,
+		target,
 		command)
 
 	stdout, err := cmd.StdoutPipe()
@@ -130,10 +137,30 @@ func (o *Orchestrator) sshStream(ctx context.Context, node, command string, time
 		return fmt.Errorf("ssh start: %w", err)
 	}
 
+	// Shared per-call progress state — both streams contribute to the same
+	// asymptotic curve so the bar advances regardless of which pipe is
+	// chatty. 30 = "feels like quick progress" knee point in the curve.
+	var (
+		mu    sync.Mutex
+		lines int64
+	)
+	advance := func(line string) {
+		mu.Lock()
+		lines++
+		n := lines
+		mu.Unlock()
+		// pct = 20 + 75*(1 - 1/(1 + n/30)), capped just under 100.
+		pct := 20.0 + 75.0*(1.0-1.0/(1.0+float64(n)/30.0))
+		if pct > 95.0 {
+			pct = 95.0
+		}
+		o.emit(StepConfigure, line, pct)
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go o.drainSSH(&wg, stdout, "")
-	go o.drainSSH(&wg, stderr, "err: ")
+	go o.drainSSH(&wg, stdout, advance)
+	go o.drainSSH(&wg, stderr, advance)
 	wg.Wait()
 
 	if err := cmd.Wait(); err != nil {
@@ -145,9 +172,9 @@ func (o *Orchestrator) sshStream(ctx context.Context, node, command string, time
 	return nil
 }
 
-// drainSSH is similar to postdeploy.drain but emits StepConfigure (progress
-// during work) rather than StepPostDeploy.
-func (o *Orchestrator) drainSSH(wg *sync.WaitGroup, r io.Reader, prefix string) {
+// drainSSH reads lines from r and routes each into `advance` (which emits
+// the progress event with a ratcheted percent).
+func (o *Orchestrator) drainSSH(wg *sync.WaitGroup, r io.Reader, advance func(string)) {
 	defer wg.Done()
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -156,7 +183,7 @@ func (o *Orchestrator) drainSSH(wg *sync.WaitGroup, r io.Reader, prefix string) 
 		if line == "" {
 			continue
 		}
-		o.emit(StepConfigure, prefix+line, 50)
+		advance(line)
 	}
 }
 

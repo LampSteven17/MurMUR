@@ -75,15 +75,32 @@ type Request struct {
 	IPv4    string // CIDR notation, e.g. "10.0.0.50/24"
 	Gateway string
 
-	// PostDeployCommand, if set, is executed via /bin/sh -c after the guest
-	// IP is resolved. GUEST_IP/USER/NAME/VMID/NODE/MURMUR_CONFIG_DIR env vars
-	// are exported. Stdout/stderr stream into the progress callback as
-	// StepPostDeploy events. Non-zero exit → partial-success error.
+	// PostDeployCommand, if set, is executed after the guest IP is resolved.
+	// Where it runs depends on PostDeployRemote:
+	//   false (default) — runs locally on the murmur host via /bin/sh -c,
+	//     with GUEST_*/MURMUR_CONFIG_DIR env vars exported. Used for ansible
+	//     playbook invocations where ansible itself handles SSH.
+	//   true            — runs ON the guest via `ssh GUEST_USER@GUEST_IP
+	//     bash -s`. Env vars are prepended as `export K=V` lines (single-
+	//     quoted, escape-safe). Used for raw shell commands that operate on
+	//     guest state (apt install, docker run, file writes under /etc, ...).
+	// Stdout/stderr stream into the progress callback as StepPostDeploy
+	// events either way; non-zero exit → partial-success error.
 	PostDeployCommand string
 
-	// WorkDir is the working directory for PostDeployCommand. Typically the
-	// directory containing cluster.yaml, so relative playbook paths resolve.
+	// PostDeployRemote selects local vs. remote execution. See above.
+	PostDeployRemote bool
+
+	// WorkDir is the working directory for local PostDeployCommand
+	// execution. Typically the directory containing cluster.yaml, so
+	// relative playbook paths resolve. Ignored when PostDeployRemote=true.
 	WorkDir string
+
+	// SecretEnv carries per-replica secrets prompted from the operator at
+	// deploy time (Twingate tokens, API keys, etc.). Each key=value pair is
+	// exported as an env var to PostDeployCommand. Values are never logged —
+	// progress events refer to them by name only.
+	SecretEnv map[string]string
 }
 
 // Result is what Deploy returns on success.

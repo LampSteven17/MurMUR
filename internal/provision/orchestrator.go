@@ -74,10 +74,31 @@ func (o *Orchestrator) Deploy(ctx context.Context, req Request) (*Result, error)
 	}
 	r := resolvedRequest{req: req, flavor: flavor, image: image}
 
+	var (
+		result *Result
+		err2   error
+	)
 	if req.Type == "vm" {
-		return o.deployVM(ctx, r)
+		result, err2 = o.deployVM(ctx, r)
+	} else {
+		result, err2 = o.deployLXC(ctx, r)
 	}
-	return o.deployLXC(ctx, r)
+	if err2 != nil {
+		return result, err2
+	}
+
+	// Post-deploy runs after both VM and LXC paths so apps work regardless
+	// of guest type. Secrets supplied by the operator at deploy time are
+	// exported as env vars alongside GUEST_*. The `Remote` flag picks
+	// between running on the murmur host (playbook flow — ansible handles
+	// its own SSH) and running on the guest via SSH (raw shell flow).
+	if cmd := req.PostDeployCommand; cmd != "" {
+		if err := o.runPostDeploy(ctx, cmd, req.WorkDir, result, req.SecretEnv, req.PostDeployRemote); err != nil {
+			return result, fmt.Errorf("deploy: post-deploy: %w", err)
+		}
+	}
+	o.emit(StepDone, fmt.Sprintf("ready · %s @ %s", req.Name, result.IPv4), 100)
+	return result, nil
 }
 
 func (o *Orchestrator) resolveFlavor(name string) (config.Flavor, error) {
@@ -406,17 +427,6 @@ func (o *Orchestrator) deployVM(ctx context.Context, r resolvedRequest) (*Result
 		User: user,
 	}
 
-	// Optional post-deploy step. The orchestrator stays runner-agnostic — it
-	// just /bin/sh -c's whatever the caller passes, with GUEST_* env vars set.
-	// AppsView wraps playbook paths with `ansible-playbook`; raw shell
-	// commands flow through unchanged.
-	if cmd := r.req.PostDeployCommand; cmd != "" {
-		if err := o.runPostDeploy(ctx, cmd, r.req.WorkDir, result); err != nil {
-			return result, fmt.Errorf("deploy: post-deploy: %w", err)
-		}
-	}
-
-	o.emit(StepDone, fmt.Sprintf("ready · %s @ %s", r.req.Name, ip), 100)
 	return result, nil
 }
 
@@ -467,20 +477,28 @@ func (o *Orchestrator) deployLXC(ctx context.Context, r resolvedRequest) (*Resul
 	}
 
 	createReq := proxmox.CreateLXCRequest{
-		Node:         targetNode,
-		VMID:         newVMID,
-		OSTemplate:   tplVolID,
-		OSType:       r.image.Distro,
-		Hostname:     r.req.Name,
-		Cores:        r.flavor.CPU,
-		Memory:       r.flavor.MemoryMB,
-		Swap:         r.flavor.MemoryMB / 2,
-		DiskSize:     r.flavor.DiskGB,
-		Storage:      storage,
-		Bridge:       bridge,
-		NetIP:        netIP,
-		NetGateway:   r.req.Gateway,
+		Node:       targetNode,
+		VMID:       newVMID,
+		OSTemplate: tplVolID,
+		OSType:     r.image.Distro,
+		Hostname:   r.req.Name,
+		Cores:      r.flavor.CPU,
+		Memory:     r.flavor.MemoryMB,
+		Swap:       r.flavor.MemoryMB / 2,
+		DiskSize:   r.flavor.DiskGB,
+		Storage:    storage,
+		Bridge:     bridge,
+		NetIP:      netIP,
+		NetGateway: r.req.Gateway,
+		// Unprivileged + nesting is the standard "modern app LXC" shape:
+		// safe-by-default isolation plus the feature docker needs to start.
+		// keyctl=1 would also be useful for some apps that touch the
+		// kernel keyring, but Proxmox restricts that flag to root@pam —
+		// API tokens get HTTP 403 "changing feature flags (except nesting)
+		// is only allowed for root@pam". Skip it; operators using such
+		// apps can set it from the PVE UI post-create.
 		Unprivileged: true,
+		Nesting:      true,
 		Start:        true,
 	}
 	if pubKey != "" {
@@ -506,7 +524,6 @@ func (o *Orchestrator) deployLXC(ctx context.Context, r resolvedRequest) (*Resul
 		return nil, fmt.Errorf("deploy: %w", err)
 	}
 
-	o.emit(StepDone, fmt.Sprintf("ready · %s @ %s", r.req.Name, ip), 100)
 	return &Result{
 		VMID: newVMID,
 		Name: r.req.Name,

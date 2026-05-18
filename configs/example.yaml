@@ -70,6 +70,99 @@ images:
     distro: debian
     url:    https://internal.example/debian-13-hardened.qcow2
 
+# App catalog. Each entry is a declarative VM-plus-configuration unit that
+# the [a]apps tab can deploy/teardown, the [u]pdate tab can rebuild, and
+# the [p]atch tab can re-run `update:` against in-place.
+#
+#   type:         "vm" (default) or "lxc". LXCs are much lighter (~256MB
+#                 RAM, no kernel) — good for thin connector-style apps.
+#   image:        references images: above OR a builtin (debian, ubuntu, ...)
+#   flavor:       references flavors: above OR a builtin (1vcpu.1gb, ...)
+#   playbook:     relative path to an ansible playbook (run post-deploy)
+#   post_deploy:  raw shell command — alternative to playbook (mutually exclusive)
+#   update:       shell command run via SSH for [p]atch — typically
+#                 "cd /opt/<name> && docker compose pull && docker compose up -d"
+#                 or an ansible-playbook re-run. Apps without `update:` don't
+#                 show up in the patch picker.
+#   update_check: optional shell command that prints "UPDATES:n/total" so the
+#                 patch tab can show update availability. If empty, murmur
+#                 runs a generic docker-compose digest check against
+#                 /opt/<name>/. Override for non-compose apps (apt, native
+#                 binaries) or apps with custom image-resolution.
+#   match_all:    true ⇒ patch/inspect fans out across EVERY guest whose name
+#                 matches `name`. Use for replicated services (one connector
+#                 per node, etc.). False/omitted ⇒ exactly one guest is
+#                 expected. Combined with deploy: murmur fans out per node,
+#                 one replica per cluster.nodes entry.
+#   secrets:      list of per-replica secrets the operator pastes at deploy
+#                 time. Each entry has `name` (env var exported to
+#                 post_deploy) and optional `prompt`. Used for things like
+#                 Twingate access/refresh tokens that differ per replica and
+#                 don't belong in cluster.env.
+apps:
+  - name: webapp
+    image: debian-13-custom
+    flavor: 16vcpu.32gb
+    playbook: playbooks/webapp.yml
+    update: cd /opt/webapp && docker compose pull && docker compose up -d
+
+  - name: static-cache
+    image: debian-13
+    flavor: 1vcpu.2gb
+    post_deploy: |
+      apt-get update && apt-get install -y nginx &&
+      systemctl enable --now nginx
+
+  # One connector per compute node — match_all makes patching iterate
+  # over every guest named "edge-connector" (e.g. one per host).
+  - name: edge-connector
+    image: debian-13
+    flavor: 1vcpu.2gb
+    match_all: true
+    playbook: playbooks/edge-connector.yml
+    update: cd /opt/edge-connector && docker compose pull && docker compose up -d
+
+  # Twingate connector: thin LXC running the official docker image, one per
+  # cluster node. Tokens are minted in the Twingate console (one access +
+  # one refresh per connector) and pasted at deploy time. Stored on the
+  # guest as /etc/twingate/.env so updates re-use them.
+  - name: twingate-connector
+    type: lxc
+    image: debian-13
+    flavor: 1vcpu.2gb
+    match_all: true
+    secrets:
+      - name: TWINGATE_ACCESS_TOKEN
+        prompt: Access token (Twingate console → Connectors → Add)
+      - name: TWINGATE_REFRESH_TOKEN
+        prompt: Refresh token (paired with the access token above)
+    # Note the $${} escape: loader leaves `${TWINGATE_*_TOKEN}` literal so
+    # the SECRETS prompt's runtime values reach the shell. ${TWINGATE_NETWORK}
+    # (single $) is loader-substituted from cluster.env since the value is
+    # the same across all replicas.
+    post_deploy: |
+      mkdir -p /etc/twingate
+      cat >/etc/twingate/.env <<EOF
+      TWINGATE_NETWORK=${TWINGATE_NETWORK}
+      TWINGATE_ACCESS_TOKEN=$${TWINGATE_ACCESS_TOKEN}
+      TWINGATE_REFRESH_TOKEN=$${TWINGATE_REFRESH_TOKEN}
+      EOF
+      chmod 600 /etc/twingate/.env
+      apt-get update -qq && apt-get install -y docker.io
+      # `--sysctl net.ipv4.ping_group_range=...` is intentionally NOT set:
+      # that sysctl isn't network-namespaced, so docker-in-unprivileged-LXC
+      # can't write it. If you need ICMP from inside the container, set the
+      # value on the PVE node instead and the LXC inherits it.
+      docker run -d \
+        --env-file /etc/twingate/.env \
+        --env TWINGATE_LABEL_HOSTNAME="$(hostname)" \
+        --env TWINGATE_LABEL_DEPLOYED_BY="murmur" \
+        --name twingate-connector \
+        --restart=unless-stopped \
+        --pull=always \
+        twingate/connector:1
+    update: docker pull twingate/connector:1 && docker restart twingate-connector
+
 # Reverse-proxy hint. Murmur stamps this string on the VM description with
 # {port} substituted from the compose file. An external sync (Traefik,
 # Caddy, etc.) reads the description and publishes the route. Omit the

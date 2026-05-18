@@ -2,6 +2,8 @@ package config
 
 // Builtin flavor catalog. User config extends; same-name entries override.
 var builtinFlavors = []Flavor{
+	{Name: "1vcpu.512mb", CPU: 1, MemoryMB: 512, DiskGB: 4},
+	{Name: "1vcpu.1gb", CPU: 1, MemoryMB: 1024, DiskGB: 8},
 	{Name: "1vcpu.2gb", CPU: 1, MemoryMB: 2048, DiskGB: 16},
 	{Name: "2vcpu.4gb", CPU: 2, MemoryMB: 4096, DiskGB: 32},
 	{Name: "4vcpu.8gb", CPU: 4, MemoryMB: 8192, DiskGB: 64},

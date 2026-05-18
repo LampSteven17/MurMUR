@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -16,16 +17,41 @@ import (
 	"github.com/rtx-monster/murmur/internal/proxmox"
 )
 
-// appsState mirrors teardownState — picker, confirm, batch run.
+// appsState mirrors teardownState — picker, confirm, secrets, batch run.
+//
+// The optional appsSecrets state only fires when at least one of the resolved
+// deploy targets has Secrets declared in cluster.yaml. It collects per-target
+// values from the operator before any provisioning starts.
 type appsState int
 
 const (
 	appsPicking appsState = iota
 	appsConfirm
+	appsSecrets
 	appsRunning
 	appsDone
 	appsFailed
 )
+
+// deployTarget is one provisioning job — a single guest on a specific node.
+// match_all apps produce one target per node that doesn't already host a
+// replica; single-instance apps produce one target with Node="" (best-fit).
+// Secrets are filled in by the appsSecrets prompt; nil for apps that declare
+// none.
+type deployTarget struct {
+	app     config.App
+	node    string            // pinned node (match_all); "" = best-fit
+	secrets map[string]string // env-var name → operator-supplied value
+}
+
+// label returns "app-name" or "app-name @ node" depending on whether the
+// target is pinned. Used for picker/confirm/running rows.
+func (t deployTarget) label() string {
+	if t.node == "" {
+		return t.app.Name
+	}
+	return t.app.Name + " @ " + t.node
+}
 
 // Bridges from the orchestrator goroutine into Update.
 type appsProgressMsg provision.ProgressEvent
@@ -36,11 +62,11 @@ type appsItemDoneMsg struct {
 }
 type appsAllDoneMsg struct{}
 
-// appResult records one queued app's outcome.
+// appResult records one queued target's outcome.
 type appResult struct {
-	app     config.App
-	done    bool
-	err     error
+	target deployTarget
+	done   bool
+	err    error
 }
 
 // AppsView is the apps catalog picker — declarative deploys from cluster.yaml.
@@ -61,14 +87,27 @@ type AppsView struct {
 
 	// batch run state
 	state     appsState
-	queue     []config.App
+	queue     []deployTarget
 	results   []appResult
 	queueIdx  int
 	activeMsg string
 	activePct float64
 	msgs      chan tea.Msg
 
+	// Secrets-prompt state. secretInputs is flat across all targets;
+	// secretInputFor[i] = (targetIdx, secretName) tells us where to write
+	// the collected value when the operator advances.
+	secretInputs   []textinput.Model
+	secretInputFor []secretInputBinding
+	secretFocus    int
+
 	keys appsKeyMap
+}
+
+// secretInputBinding ties a textinput.Model index back to (target, secret name).
+type secretInputBinding struct {
+	targetIdx  int
+	secretName string
 }
 
 type appsKeyMap struct {
@@ -116,18 +155,24 @@ func (v *AppsView) Init() tea.Cmd {
 
 func (v *AppsView) Title() string { return "apps" }
 
-func (v *AppsView) CapturesKeys() bool { return false }
+// CapturesKeys is true while the secrets-prompt textinputs are focused, so
+// the parent app stops intercepting global hotkeys (otherwise typing a "q"
+// in a token field would quit the program).
+func (v *AppsView) CapturesKeys() bool { return v.state == appsSecrets }
 
 func (v *AppsView) Help() []key.Binding {
 	switch v.state {
 	case appsConfirm:
 		return []key.Binding{v.keys.Yes, v.keys.No}
+	case appsSecrets:
+		return []key.Binding{v.keys.Up, v.keys.Down, v.keys.Confirm, v.keys.Back}
 	case appsDone, appsFailed:
 		return []key.Binding{v.keys.Back}
 	default:
 		return []key.Binding{v.keys.Up, v.keys.Down, v.keys.Toggle, v.keys.SelAll, v.keys.ClearAll, v.keys.Confirm}
 	}
 }
+
 
 func (v *AppsView) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch m := msg.(type) {
@@ -183,6 +228,8 @@ func (v *AppsView) Update(msg tea.Msg) (View, tea.Cmd) {
 			return v.updatePicking(m)
 		case appsConfirm:
 			return v.updateConfirm(m)
+		case appsSecrets:
+			return v.updateSecrets(m)
 		case appsDone, appsFailed:
 			switch {
 			case key.Matches(m, v.keys.NewAgain), key.Matches(m, v.keys.Back):
@@ -239,6 +286,19 @@ func (v *AppsView) updatePicking(m tea.KeyMsg) (View, tea.Cmd) {
 func (v *AppsView) updateConfirm(m tea.KeyMsg) (View, tea.Cmd) {
 	switch {
 	case key.Matches(m, v.keys.Yes):
+		// Resolve picked apps → one or more deploy targets each (fan out
+		// match_all apps), then either prompt for secrets or jump straight
+		// to the deploy loop.
+		v.queue = v.resolveTargets()
+		if len(v.queue) == 0 {
+			// Everything we picked collided. Stay in confirm so the
+			// operator can see the skip list and back out.
+			return v, nil
+		}
+		if v.targetsNeedSecrets() {
+			v.beginSecretsPrompt()
+			return v, textinput.Blink
+		}
 		return v, v.startBatch()
 	case key.Matches(m, v.keys.No), key.Matches(m, v.keys.Back):
 		v.state = appsPicking
@@ -246,33 +306,178 @@ func (v *AppsView) updateConfirm(m tea.KeyMsg) (View, tea.Cmd) {
 	return v, nil
 }
 
-// ── batch run ──────────────────────────────────────────────────────────────
+// ── secrets prompt ─────────────────────────────────────────────────────────
 
-// startBatch builds the queue from picked apps, skipping any whose name
-// already has a running guest (collision policy: skip silently in the run
-// log; the confirm screen highlighted them upstream so the operator already
-// saw which ones were left out).
-func (v *AppsView) startBatch() tea.Cmd {
-	running := v.runningNames()
-	v.queue = nil
+// updateSecrets handles input while the operator is filling per-replica
+// secret values. Tab/down/up navigates between inputs; enter dispatches the
+// batch once every field is non-empty; esc returns to confirm.
+func (v *AppsView) updateSecrets(m tea.KeyMsg) (View, tea.Cmd) {
+	switch {
+	case m.Type == tea.KeyEsc:
+		v.state = appsConfirm
+		v.secretInputs = nil
+		v.secretInputFor = nil
+		return v, nil
+	case m.Type == tea.KeyTab, m.Type == tea.KeyDown:
+		// Navigation keys are restricted to raw tab/arrows here — using
+		// v.keys.Down would treat "j" as down, swallowing it from token
+		// text input.
+		v.focusSecretInput((v.secretFocus + 1) % len(v.secretInputs))
+		return v, textinput.Blink
+	case m.Type == tea.KeyShiftTab, m.Type == tea.KeyUp:
+		idx := v.secretFocus - 1
+		if idx < 0 {
+			idx = len(v.secretInputs) - 1
+		}
+		v.focusSecretInput(idx)
+		return v, textinput.Blink
+	case m.Type == tea.KeyEnter:
+		// Validate: every field must be non-empty. On miss, jump to it.
+		for i, in := range v.secretInputs {
+			if strings.TrimSpace(in.Value()) == "" {
+				v.focusSecretInput(i)
+				return v, textinput.Blink
+			}
+		}
+		// Pour collected values back into the queue's per-target maps.
+		for i, b := range v.secretInputFor {
+			if v.queue[b.targetIdx].secrets == nil {
+				v.queue[b.targetIdx].secrets = map[string]string{}
+			}
+			v.queue[b.targetIdx].secrets[b.secretName] = v.secretInputs[i].Value()
+		}
+		v.secretInputs = nil
+		v.secretInputFor = nil
+		return v, v.startBatch()
+	}
+	// Forward the keypress to the focused textinput.
+	if v.secretFocus < len(v.secretInputs) {
+		var cmd tea.Cmd
+		v.secretInputs[v.secretFocus], cmd = v.secretInputs[v.secretFocus].Update(m)
+		return v, cmd
+	}
+	return v, nil
+}
+
+// focusSecretInput moves focus to input idx and toggles the bubbles cursor.
+func (v *AppsView) focusSecretInput(idx int) {
+	if idx < 0 || idx >= len(v.secretInputs) {
+		return
+	}
+	for i := range v.secretInputs {
+		if i == idx {
+			v.secretInputs[i].Focus()
+		} else {
+			v.secretInputs[i].Blur()
+		}
+	}
+	v.secretFocus = idx
+}
+
+// beginSecretsPrompt builds one textinput per (target, secret) pair so the
+// operator pastes each value in sequence. Inputs are flat — they render
+// grouped by target in renderSecretsPrompt.
+func (v *AppsView) beginSecretsPrompt() {
+	v.secretInputs = v.secretInputs[:0]
+	v.secretInputFor = v.secretInputFor[:0]
+	for ti, t := range v.queue {
+		for _, s := range t.app.Secrets {
+			in := textinput.New()
+			in.CharLimit = 4096
+			in.Width = 60
+			in.Placeholder = s.Prompt
+			if in.Placeholder == "" {
+				in.Placeholder = s.Name
+			}
+			v.secretInputs = append(v.secretInputs, in)
+			v.secretInputFor = append(v.secretInputFor, secretInputBinding{
+				targetIdx: ti, secretName: s.Name,
+			})
+		}
+	}
+	v.state = appsSecrets
+	v.secretFocus = 0
+	if len(v.secretInputs) > 0 {
+		v.secretInputs[0].Focus()
+	}
+}
+
+// targetsNeedSecrets reports whether any queued target has at least one
+// secret declared in cluster.yaml.
+func (v *AppsView) targetsNeedSecrets() bool {
+	for _, t := range v.queue {
+		if len(t.app.Secrets) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveTargets expands picked apps into provisioning targets:
+//   - Single-instance app already running → skipped (collision)
+//   - Single-instance app not running → one target, node="" (best-fit)
+//   - match_all app → one target per node that doesn't already host a replica
+func (v *AppsView) resolveTargets() []deployTarget {
+	nodesPerApp := v.nodesRunningByApp()
+	var out []deployTarget
 	for _, a := range v.cfg.Apps {
 		if !v.selected[a.Name] {
 			continue
 		}
-		if running[a.Name] {
+		if !a.MatchAll {
+			if len(nodesPerApp[a.Name]) > 0 {
+				continue // collision — already running
+			}
+			out = append(out, deployTarget{app: a})
 			continue
 		}
-		v.queue = append(v.queue, a)
+		// match_all: deploy to the NEXT missing node only — one at a time.
+		// The picker shows "(N/M nodes deployed)" so the operator can see
+		// progress and re-trigger to add another. Doing all missing nodes
+		// in one batch is too aggressive: it stacks 6 token-paste fields
+		// for replicated services, hides per-replica failures behind a
+		// batch summary, and treats deploying to fresh hardware as a
+		// one-shot mass-rollout when it's usually an incremental decision.
+		have := map[string]bool{}
+		for _, n := range nodesPerApp[a.Name] {
+			have[n] = true
+		}
+		for _, n := range v.cfg.Cluster.Nodes {
+			if have[n.Name] {
+				continue
+			}
+			out = append(out, deployTarget{app: a, node: n.Name})
+			break // one per invocation; rerun [a]apps to add another
+		}
 	}
-	if len(v.queue) == 0 {
-		// Everything we picked collided. Bounce back to confirm so the
-		// operator can deselect or teardown.
-		v.state = appsConfirm
-		return nil
+	return out
+}
+
+// nodesRunningByApp returns guest-name → list of node names where a guest of
+// that name currently exists (running OR stopped — both block a fresh deploy).
+func (v *AppsView) nodesRunningByApp() map[string][]string {
+	out := map[string][]string{}
+	for _, r := range v.rows {
+		if (r.Type != "qemu" && r.Type != "lxc") || r.Template == 1 {
+			continue
+		}
+		if r.Status != "running" && r.Status != "stopped" {
+			continue
+		}
+		out[r.Name] = append(out[r.Name], r.Node)
 	}
+	return out
+}
+
+// ── batch run ──────────────────────────────────────────────────────────────
+
+// startBatch dispatches v.queue to the orchestrator sequentially. The queue
+// must already be populated by resolveTargets() (called from confirm-yes);
+// startBatch does not rebuild it.
+func (v *AppsView) startBatch() tea.Cmd {
 	v.results = make([]appResult, len(v.queue))
 	for i := range v.queue {
-		v.results[i].app = v.queue[i]
+		v.results[i].target = v.queue[i]
 	}
 	v.queueIdx = 0
 	v.activeMsg = ""
@@ -292,15 +497,22 @@ func (v *AppsView) startBatch() tea.Cmd {
 	queue := v.queue
 	configDir := v.configDir
 	go func() {
-		for i, app := range queue {
+		for i, t := range queue {
 			msgs <- appsItemStartMsg{idx: i}
+			gtype := t.app.Type
+			if gtype == "" {
+				gtype = "vm"
+			}
 			req := provision.Request{
-				Name:              app.Name,
-				Type:              "vm",
-				Image:             app.Image,
-				Flavor:            app.Flavor,
-				PostDeployCommand: buildPostDeployCommand(app, configDir),
+				Name:              t.app.Name,
+				Type:              gtype,
+				Image:             t.app.Image,
+				Flavor:            t.app.Flavor,
+				TargetNode:        t.node,
+				PostDeployCommand: buildPostDeployCommand(t.app, configDir),
+				PostDeployRemote:  t.app.PostDeploy != "", // raw shell → run on guest
 				WorkDir:           configDir,
+				SecretEnv:         t.secrets,
 			}
 			_, err := orch.Deploy(context.Background(), req)
 			msgs <- appsItemDoneMsg{idx: i, err: err}
@@ -322,9 +534,11 @@ func buildPostDeployCommand(app config.App, _ string) string {
 		// new — no entry in known_hosts yet. Operators who want stronger
 		// guarantees can move the host-key flag to ~/.ansible.cfg and set
 		// PostDeploy instead of Playbook.
+		// Pass both `app_name` (lightlab's playbook convention) and `vm_name`
+		// (murmur's earlier convention) so playbooks written either way work.
 		return fmt.Sprintf(
 			"ansible-playbook -i ${GUEST_IP}, -u ${GUEST_USER} "+
-				"-e vm_name=${GUEST_NAME} -e vm_ip=${GUEST_IP} "+
+				"-e app_name=${GUEST_NAME} -e vm_name=${GUEST_NAME} -e vm_ip=${GUEST_IP} "+
 				"--ssh-extra-args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' "+
 				"%s",
 			shellQuote(app.Playbook))
@@ -341,9 +555,10 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// runningNames returns the set of guest names currently running on the
-// cluster, used for collision detection in the confirm screen + skip logic
-// in the batch dispatch.
+// runningNames returns the set of guest names currently present (running or
+// stopped) on the cluster, used for collision detection in the picker view.
+// Match_all apps are accepted as long as not every node already hosts one —
+// the per-node check happens in resolveTargets.
 func (v *AppsView) runningNames() map[string]bool {
 	out := map[string]bool{}
 	for _, r := range v.rows {
@@ -377,6 +592,9 @@ func (v *AppsView) resetToList() {
 	v.activeMsg = ""
 	v.activePct = 0
 	v.selected = map[string]bool{}
+	v.secretInputs = nil
+	v.secretInputFor = nil
+	v.secretFocus = 0
 	v.loading = true
 }
 
@@ -411,6 +629,8 @@ func (v *AppsView) View(width, height int) string {
 		body = v.renderPicking(width)
 	case appsConfirm:
 		body = v.renderConfirm(width)
+	case appsSecrets:
+		body = v.renderSecretsPrompt(width)
 	case appsRunning, appsDone, appsFailed:
 		body = v.renderRunning(width)
 	}
@@ -426,6 +646,8 @@ func (v *AppsView) subtitle() string {
 		return "deploy from catalog · space toggle · ⏎ deploy"
 	case appsConfirm:
 		return "confirm deployment"
+	case appsSecrets:
+		return fmt.Sprintf("paste per-replica secrets · %d field(s)", len(v.secretInputs))
 	case appsRunning:
 		return fmt.Sprintf("deploying %d of %d", v.completedCount(), len(v.queue))
 	case appsDone:
@@ -452,7 +674,9 @@ func (v *AppsView) renderPicking(width int) string {
 	ink := lipgloss.NewStyle().Foreground(DefaultTheme.Ink)
 	gold := lipgloss.NewStyle().Foreground(DefaultTheme.Gold).Bold(true)
 	verm := lipgloss.NewStyle().Foreground(DefaultTheme.Vermilion).Bold(true)
-	running := v.runningNames()
+	verd := lipgloss.NewStyle().Foreground(DefaultTheme.Verdigris).Bold(true)
+	nodesPerApp := v.nodesRunningByApp()
+	nodeCount := len(v.cfg.Cluster.Nodes)
 
 	lines := []string{v.styles.Title.Render("APPS") + "  " + muted.Render(fmt.Sprintf("(%d)", len(v.cfg.Apps)))}
 	for i, a := range v.cfg.Apps {
@@ -465,18 +689,36 @@ func (v *AppsView) renderPicking(width int) string {
 			check = verm.Render("[x]")
 		}
 		recipe := postDeploySummary(a)
-		collision := ""
-		if running[a.Name] {
-			collision = "  " + verm.Render("(collision — already running)")
+		gtype := a.Type
+		if gtype == "" {
+			gtype = "vm"
 		}
-		row := fmt.Sprintf("%s%s  %s  %s  %s  %s%s",
+		// Trailing status column: match_all apps show coverage; single-
+		// instance apps show a collision marker. Secret-bearing apps don't
+		// get a picker badge — the operator sees the per-replica count on
+		// the confirm screen, where there's room for context.
+		status := ""
+		switch {
+		case a.MatchAll:
+			have := len(nodesPerApp[a.Name])
+			if have >= nodeCount {
+				// Goal state for a match_all app — green, no warning vibe.
+				status = verd.Render(fmt.Sprintf("✓ deployed on all %d node(s)", nodeCount))
+			} else {
+				status = muted.Render(fmt.Sprintf("(%d/%d nodes deployed)", have, nodeCount))
+			}
+		case len(nodesPerApp[a.Name]) > 0:
+			status = verm.Render("(collision — already present)")
+		}
+		row := fmt.Sprintf("%s%s  %s  %s  %s  %s  %s  %s",
 			cursor,
 			check,
-			gold.Render(padRight(a.Name, 18)),
+			gold.Render(padRight(a.Name, 20)),
+			ink.Render(padRight(gtype, 4)),
 			ink.Render(padRight(a.Image, 14)),
 			ink.Render(padRight(a.Flavor, 12)),
-			muted.Render(truncate(recipe, 50)),
-			collision,
+			muted.Render(padRight(truncate(recipe, 50), 50)),
+			status,
 		)
 		lines = append(lines, row)
 	}
@@ -491,16 +733,44 @@ func (v *AppsView) renderPicking(width int) string {
 }
 
 // postDeploySummary returns a one-line description of what murmur will run
-// after the guest is up: the playbook path, the raw command (truncated), or
-// "(provision only)" for apps with no post-deploy.
+// after the guest is up: the playbook path, a single-line preview of the
+// raw command, or "(provision only)" for apps with no post-deploy. Multi-
+// line shell blocks are collapsed to the first non-blank line plus an
+// ellipsis so the confirm screen doesn't explode vertically.
 func postDeploySummary(a config.App) string {
 	switch {
 	case a.Playbook != "":
 		return "playbook: " + a.Playbook
 	case a.PostDeploy != "":
-		return "shell: " + a.PostDeploy
+		return "shell: " + firstShellLine(a.PostDeploy)
 	}
 	return "(provision only)"
+}
+
+// firstShellLine returns the first non-blank line of s, with an ellipsis
+// suffix if there's more content after it. Used to summarize multi-line
+// post_deploy blocks in single-row UI.
+func firstShellLine(s string) string {
+	var first string
+	more := false
+	for _, ln := range strings.Split(s, "\n") {
+		trimmed := strings.TrimSpace(ln)
+		if first == "" {
+			if trimmed == "" {
+				continue
+			}
+			first = trimmed
+			continue
+		}
+		if trimmed != "" {
+			more = true
+			break
+		}
+	}
+	if more {
+		return first + " …"
+	}
+	return first
 }
 
 func (v *AppsView) renderConfirm(width int) string {
@@ -508,20 +778,12 @@ func (v *AppsView) renderConfirm(width int) string {
 	ink := lipgloss.NewStyle().Foreground(DefaultTheme.Ink).Bold(true)
 	gold := lipgloss.NewStyle().Foreground(DefaultTheme.Gold).Bold(true)
 	verm := lipgloss.NewStyle().Foreground(DefaultTheme.Vermilion).Bold(true)
-	running := v.runningNames()
 
-	var picked []config.App
-	var skipped []config.App
-	for _, a := range v.cfg.Apps {
-		if !v.selected[a.Name] {
-			continue
-		}
-		if running[a.Name] {
-			skipped = append(skipped, a)
-		} else {
-			picked = append(picked, a)
-		}
-	}
+	// Preview-only: regenerate targets so the screen shows exactly what
+	// will be deployed. The actual queue is built fresh from this same
+	// helper when the operator presses [y].
+	targets := v.resolveTargets()
+	skipped := v.skippedFromPicked()
 
 	auth := "key"
 	if v.cfg.Cluster.SSH.Password != "" {
@@ -531,22 +793,60 @@ func (v *AppsView) renderConfirm(width int) string {
 		}
 	}
 
+	totalSecrets := 0
+	for _, t := range targets {
+		totalSecrets += len(t.app.Secrets)
+	}
+
 	lines := []string{
-		" " + ink.Render(fmt.Sprintf("About to deploy %d app(s):", len(picked))),
+		" " + ink.Render(fmt.Sprintf("About to deploy %d target(s):", len(targets))),
 		"",
 	}
-	for _, a := range picked {
-		lines = append(lines, fmt.Sprintf("    %s  %s  %s  %s",
-			gold.Render(padRight(a.Name, 18)),
-			ink.Render(padRight(a.Image, 14)),
-			ink.Render(padRight(a.Flavor, 12)),
-			muted.Render(postDeploySummary(a)),
+	for _, t := range targets {
+		gtype := t.app.Type
+		if gtype == "" {
+			gtype = "vm"
+		}
+		secretTag := ""
+		if n := len(t.app.Secrets); n > 0 {
+			secretTag = "  " + verm.Render(fmt.Sprintf("· %d secret(s) to paste", n))
+		}
+		lines = append(lines, fmt.Sprintf("    %s  %s  %s  %s%s",
+			gold.Render(padRight(t.label(), 28)),
+			ink.Render(padRight(gtype, 4)),
+			ink.Render(padRight(t.app.Image, 14)),
+			muted.Render(postDeploySummary(t.app)),
+			secretTag,
 		))
 	}
-	if len(skipped) > 0 {
+	// Split skipped into two buckets so the operator sees the right
+	// remediation hint: match_all apps that are already deployed on every
+	// declared node are at the desired state (add more nodes to scale up),
+	// not a "collision" to be torn down. Single-instance apps with a guest
+	// of that name already running ARE collisions.
+	var fullMatchAll, collisions []config.App
+	for _, a := range skipped {
+		if a.MatchAll {
+			fullMatchAll = append(fullMatchAll, a)
+		} else {
+			collisions = append(collisions, a)
+		}
+	}
+	verd := lipgloss.NewStyle().Foreground(DefaultTheme.Verdigris).Bold(true)
+	if len(fullMatchAll) > 0 {
 		lines = append(lines, "")
-		lines = append(lines, " "+verm.Render(fmt.Sprintf("%d will be SKIPPED (collision — already running):", len(skipped))))
-		for _, a := range skipped {
+		lines = append(lines, " "+verd.Render(fmt.Sprintf(
+			"✓ %d already deployed on every node:", len(fullMatchAll))))
+		for _, a := range fullMatchAll {
+			lines = append(lines, "    "+gold.Render(a.Name)+
+				muted.Render("  (add cluster.nodes entries to scale out)"))
+		}
+	}
+	if len(collisions) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, " "+verm.Render(fmt.Sprintf(
+			"%d will be SKIPPED (collision — already running):", len(collisions))))
+		for _, a := range collisions {
 			lines = append(lines, "    "+verm.Render(a.Name)+
 				muted.Render("  (teardown first to redeploy)"))
 		}
@@ -554,15 +854,85 @@ func (v *AppsView) renderConfirm(width int) string {
 	lines = append(lines, "")
 	lines = append(lines, fmt.Sprintf("  %s %s   %s %s",
 		muted.Render("auth:"), ink.Render(auth),
-		muted.Render("placement:"), ink.Render("auto (best-fit per app)"),
+		muted.Render("placement:"), ink.Render("auto (best-fit per target unless pinned)"),
 	))
+	if totalSecrets > 0 {
+		lines = append(lines, "  "+muted.Render(fmt.Sprintf(
+			"secrets:")) + " " + ink.Render(fmt.Sprintf(
+			"%d total — you'll be prompted next", totalSecrets)))
+	}
 	lines = append(lines, "")
 	yes := verm.Render("[y]")
 	no := gold.Render("[n]")
-	if len(picked) == 0 {
-		lines = append(lines, "    "+muted.Render("nothing to deploy after collisions — esc to go back"))
+	if len(targets) == 0 {
+		lines = append(lines, "    "+muted.Render("nothing to deploy after skips — esc to go back"))
 	} else {
-		lines = append(lines, "    "+yes+" "+ink.Render("deploy")+"      "+no+" "+ink.Render("cancel"))
+		next := "deploy"
+		if totalSecrets > 0 {
+			next = "next: enter secrets"
+		}
+		lines = append(lines, "    "+yes+" "+ink.Render(next)+"      "+no+" "+ink.Render("cancel"))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// skippedFromPicked returns picked apps that are fully covered cluster-wide:
+// a single-instance app already has any guest of that name; a match_all app
+// already has one per cluster node. Used only by the confirm preview.
+func (v *AppsView) skippedFromPicked() []config.App {
+	nodesPerApp := v.nodesRunningByApp()
+	var skipped []config.App
+	for _, a := range v.cfg.Apps {
+		if !v.selected[a.Name] {
+			continue
+		}
+		if !a.MatchAll {
+			if len(nodesPerApp[a.Name]) > 0 {
+				skipped = append(skipped, a)
+			}
+			continue
+		}
+		if len(nodesPerApp[a.Name]) >= len(v.cfg.Cluster.Nodes) {
+			skipped = append(skipped, a)
+		}
+	}
+	return skipped
+}
+
+// renderSecretsPrompt draws one block per target with at least one secret,
+// each block listing the textinputs for that target's declared secrets.
+func (v *AppsView) renderSecretsPrompt(width int) string {
+	muted := lipgloss.NewStyle().Foreground(DefaultTheme.Muted)
+	ink := lipgloss.NewStyle().Foreground(DefaultTheme.Ink).Bold(true)
+	gold := lipgloss.NewStyle().Foreground(DefaultTheme.Gold).Bold(true)
+	verm := lipgloss.NewStyle().Foreground(DefaultTheme.Vermilion).Bold(true)
+
+	lines := []string{
+		" " + ink.Render("Enter per-replica secrets") + "  " + muted.Render(
+			"(tab/↓ next · shift+tab/↑ prev · ⏎ deploy · esc back)"),
+		"",
+	}
+
+	// Walk inputs in order, grouping by target so headers print exactly
+	// once per target. Each input's index in v.secretInputs matches its
+	// binding in v.secretInputFor.
+	lastTarget := -1
+	for i, b := range v.secretInputFor {
+		if b.targetIdx != lastTarget {
+			t := v.queue[b.targetIdx]
+			lines = append(lines, "  "+gold.Render(t.label()))
+			lastTarget = b.targetIdx
+		}
+		marker := "  "
+		if i == v.secretFocus {
+			marker = v.styles.SelectionMark.Render("▶ ")
+		}
+		field := v.secretInputs[i].View()
+		label := muted.Render(padRight(b.secretName+":", 24))
+		lines = append(lines, "    "+marker+label+"  "+field)
+	}
+	if len(v.secretInputs) == 0 {
+		lines = append(lines, "    "+verm.Render("(no inputs built — bug; press esc)"))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -593,7 +963,7 @@ func (v *AppsView) renderRunning(width int) string {
 	)))
 	lines = append(lines, v.renderBar(pct))
 	lines = append(lines, "")
-	for i, app := range v.queue {
+	for i, t := range v.queue {
 		res := v.results[i]
 		var glyph, status string
 		switch {
@@ -612,7 +982,7 @@ func (v *AppsView) renderRunning(width int) string {
 		}
 		row := fmt.Sprintf(" %s  %s  %s",
 			glyph,
-			gold.Render(padRight(app.Name, 18)),
+			gold.Render(padRight(t.label(), 28)),
 			status,
 		)
 		lines = append(lines, row)

@@ -130,17 +130,34 @@ func loadEnvFile(path string) error {
 	return nil
 }
 
-var varRE = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+// varRE matches `${VAR}` (loader-time substitution) and `$${VAR}` (escape:
+// emits the literal `${VAR}` so the value can be expanded later by a shell
+// that runs the rendered command). The leading `\$?` is captured by the
+// optional prefix `$` in the match itself, not as a group.
+var varRE = regexp.MustCompile(`\$\$?\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
 // substituteScalars walks the YAML AST and replaces ${VAR} in every scalar
 // value (string, int, bool — yaml.v3 reads them all as scalar nodes).
 // Comments are stored separately on Node and are never visited.
+//
+// `${VAR}`  ⇒ replaced with os.Getenv("VAR"); missing → loud error.
+// `$${VAR}` ⇒ emitted as the literal `${VAR}` so post_deploy / update
+//             commands can reference runtime env (secrets prompted at
+//             deploy time, GUEST_IP, etc.) without the loader eagerly
+//             substituting them. Without this escape, every shell ${…}
+//             in cluster.yaml would either need a cluster.env entry or
+//             would clash with operator-supplied secrets.
+//
 // Missing variables fail loudly with the union of names.
 func substituteScalars(n *yaml.Node) error {
 	var missing []string
 	walkScalars(n, func(s *yaml.Node) {
 		orig := s.Value
 		s.Value = varRE.ReplaceAllStringFunc(s.Value, func(m string) string {
+			if strings.HasPrefix(m, "$$") {
+				// Escaped — strip one leading $ and pass through literally.
+				return m[1:]
+			}
 			name := m[2 : len(m)-1]
 			v, ok := os.LookupEnv(name)
 			if !ok {

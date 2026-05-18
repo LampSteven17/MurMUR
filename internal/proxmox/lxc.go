@@ -170,6 +170,26 @@ func (c *Client) RebootLXC(ctx context.Context, node string, vmid int) (string, 
 	return c.lxcStatusAction(ctx, node, vmid, "reboot", nil)
 }
 
+// GetLXCConfig returns the current container config (ostype, hostname,
+// rootfs, net0, etc.) as a flat string map. PVE returns mixed types in the
+// JSON (some int, some string), so we decode through `any` and stringify
+// every value — useful for reading distro family from `ostype` since LXCs
+// don't have a guest agent.
+func (c *Client) GetLXCConfig(ctx context.Context, node string, vmid int) (map[string]string, error) {
+	var raw map[string]any
+	if err := c.GetJSON(ctx, fmt.Sprintf("/nodes/%s/lxc/%d/config", node, vmid), &raw); err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		if v == nil {
+			continue
+		}
+		out[k] = fmt.Sprintf("%v", v)
+	}
+	return out, nil
+}
+
 // SetLXCConfig issues PUT /config with arbitrary keys (rootfs, hostname,
 // description, net0, memory, cores, swap, features, tags, ...).
 func (c *Client) SetLXCConfig(ctx context.Context, node string, vmid int, cfg map[string]string) error {

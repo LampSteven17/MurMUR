@@ -18,10 +18,46 @@ type Config struct {
 // (provision-only, no configuration). Validation enforces this.
 type App struct {
 	Name       string `yaml:"name"`
+	Type       string `yaml:"type,omitempty"` // "vm" | "lxc" (default "vm" when empty)
 	Image      string `yaml:"image"`
 	Flavor     string `yaml:"flavor"`
 	Playbook   string `yaml:"playbook,omitempty"`    // ansible playbook path (relative to config dir)
 	PostDeploy string `yaml:"post_deploy,omitempty"` // raw shell command (alternative to Playbook)
+
+	// Update is a shell command run via SSH against the running guest when
+	// the operator triggers a patch in the [p]atch tab. Typical content:
+	// `cd /opt/X && docker compose pull && docker compose up -d`, or an
+	// ansible-playbook invocation for richer apps. Apps without an Update
+	// command are skipped in the patch picker.
+	Update string `yaml:"update,omitempty"`
+
+	// UpdateCheck is an optional shell command run via SSH that prints
+	// `UPDATES:<n>/<total>` (e.g. `UPDATES:2/3`) to stdout, indicating how
+	// many of the app's components have updates waiting. Used to override
+	// the built-in compose-image-digest check for apps that aren't
+	// compose-based (apt packages, native binaries, etc.). If empty, murmur
+	// runs a generic docker compose digest check against /opt/<name>/.
+	UpdateCheck string `yaml:"update_check,omitempty"`
+
+	// MatchAll: when true, patch/inspect fans out across every guest whose
+	// name matches App.Name (rather than expecting exactly one). Used for
+	// replicated services like twingate-connector that run one instance per
+	// node. The Update command is run sequentially against each instance.
+	MatchAll bool `yaml:"match_all,omitempty"`
+
+	// Secrets declares per-replica secret values the operator must supply
+	// at deploy time (Twingate access/refresh tokens, API keys, etc.).
+	// During deploy the [a]apps tab prompts for each secret per target
+	// guest; values are exported as env vars to post_deploy. Never logged.
+	Secrets []AppSecret `yaml:"secrets,omitempty"`
+}
+
+// AppSecret is one per-replica secret prompted at deploy time. Name is the
+// env-var that gets exported to post_deploy; Prompt is the operator-facing
+// label (defaults to Name if empty).
+type AppSecret struct {
+	Name   string `yaml:"name"`
+	Prompt string `yaml:"prompt,omitempty"`
 }
 
 type Cluster struct {

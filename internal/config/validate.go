@@ -91,6 +91,22 @@ func (c *Config) Validate() error {
 		if a.Playbook != "" && a.PostDeploy != "" {
 			errs = append(errs, fmt.Sprintf("apps[%d] %q: only one of playbook or post_deploy may be set", i, a.Name))
 		}
+		switch a.Type {
+		case "", "vm", "lxc":
+		default:
+			errs = append(errs, fmt.Sprintf("apps[%d] %q: type %q is not supported (vm | lxc)", i, a.Name, a.Type))
+		}
+		seenSecret := map[string]bool{}
+		for j, s := range a.Secrets {
+			if s.Name == "" {
+				errs = append(errs, fmt.Sprintf("apps[%d] %q: secrets[%d].name is required", i, a.Name, j))
+				continue
+			}
+			if seenSecret[s.Name] {
+				errs = append(errs, fmt.Sprintf("apps[%d] %q: secrets[%d].name %q is duplicated", i, a.Name, j, s.Name))
+			}
+			seenSecret[s.Name] = true
+		}
 	}
 
 	for i, b := range c.StorageBackends {

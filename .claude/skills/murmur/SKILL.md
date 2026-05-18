@@ -70,6 +70,32 @@ Pure docs/yaml/memory edits don't need the build+copy.
 3. If the endpoint mutates cluster state, prefix the method name with the verb (`CreateVM`, `DestroyLXC`, `MigrateContainer`).
 4. Add a smoke test if the response shape is non-trivial — feed a recorded JSON fixture into the unmarshal path.
 
+## App lifecycle (apps/deploy/teardown/update/patch tabs)
+
+The app lifecycle lives in `internal/provision/` and is driven by entries in `cluster.yaml`'s `apps:` list. Each tab maps to one provision entrypoint:
+
+| Tab        | TUI file              | Provision entrypoint                          | What it does |
+|------------|-----------------------|-----------------------------------------------|--------------|
+| `[a]pps`   | `apps.go`             | `Orchestrator.DeployApp`                      | Clone image → cloud-init → run `playbook:` or `post_deploy:` |
+| `[d]eploy` | `deploy.go`           | `Orchestrator.DeployApp`                      | Multi-select bulk deploy |
+| `[t]eardown` | `teardown.go`       | `Orchestrator.DestroyGuest`                   | Stop+delete VM/LXC |
+| `[u]pdate` | `appupdate.go` (host) | `Orchestrator.UpgradeHost`                    | apt dist-upgrade on PVE nodes |
+| `[p]atch`  | `patch.go`            | `Orchestrator.PatchApp` / `PatchAppInstance`  | SSH to running guest, run app's `update:` command |
+
+Key conventions:
+
+- **SSH user is live-discovered, not catalog-claimed.** `appSSHUser` queries the guest's `/qemu/{vmid}/agent/get-osinfo` and maps the reported distro ID to `cluster.ssh.users` (or to a builtin default). Don't trust `image.distro` — operators redeploy and drift.
+- **`match_all: true` fans out per replica.** The patch picker emits one row per matching guest; each row dispatches its own `PatchAppInstance(vmid, node)` call so successes/failures are independent.
+- **`update:` is just a shell command over SSH.** It's run with `sshStream` (the same streamer the host upgrade uses) so progress flows back as `StepConfigure` events.
+- **Inspect, don't pre-store.** The patch tab calls `InspectApp` in parallel on view-load to fetch live OS / IP / `docker compose ps`. No background poller, no cache — just one fan-out per refresh.
+
+### Procedure: add an app-lifecycle field
+
+1. Add to `config.App` in `internal/config/types.go` with a yaml tag + a doc-comment that explains *when* the field applies (deploy? patch? both?).
+2. Add to the `apps:` example in `configs/example.yaml` with a `#` comment.
+3. Wire it through the relevant `Orchestrator` method(s) in `internal/provision/`.
+4. Surface it in the matching TUI tab (`internal/tui/{apps,patch,...}.go`) if the operator should see/select it.
+
 ## Procedure: bump Go dependencies
 
 ```bash
@@ -88,6 +114,7 @@ If a major version bump is required, update one module at a time with a focused 
 - `cmd/murmur/main.go` — entry point
 - `internal/config/` — cluster config Go types, YAML loader, validator
 - `internal/proxmox/` — typed ProxMox API client
+- `internal/provision/` — app lifecycle orchestrator (deploy/teardown/host-upgrade/patch)
 - `internal/tui/` — Bubble Tea app, components, views
 - `configs/example.yaml` — canonical reference for the config surface
 - `go.mod` / `go.sum` — module + pinned deps
