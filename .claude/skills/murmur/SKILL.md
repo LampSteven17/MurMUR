@@ -79,7 +79,7 @@ The app lifecycle lives in `internal/provision/` and is driven by entries in `cl
 |--------------|-----------------------|-----------------------------------------------|--------------|
 | `[a]pps`     | `apps.go`             | `Orchestrator.Deploy(Request)`                | Per-app: pick → confirm → optional secrets prompt → provision → run post-deploy |
 | `[d]eploy`   | `deploy.go`           | `Orchestrator.Deploy(Request)`                | Raw guest form (no app catalog) |
-| `[t]eardown` | `teardown.go`         | `Orchestrator.Teardown(TeardownRequest)`      | Stop+destroy VM/LXC with purge |
+| `[t]eardown` | `teardown.go`         | `Orchestrator.Teardown(TeardownRequest)`      | Remove from HA (if managed) → stop → destroy+purge; resilient to stale status + LXC cleanup lag |
 | `[u]pdate`   | `update.go`           | `Orchestrator.UpgradeHost(node)`              | apt dist-upgrade on PVE nodes (host-side, via root SSH) |
 | `[p]atch`    | `patch.go`            | `Orchestrator.PatchApp` / `PatchAppInstance`  | SSH to running guest, run app's `update:` command |
 | `[x]users`   | `users.go`            | `proxmox.{Create,Delete}User/Pool/Token/ACL`  | Admin-only — add/delete/rotate-token/suspend operators; auto-exports starter folder |
@@ -154,7 +154,7 @@ The loader's `substituteScalars` would fail loudly on undefined env vars, but th
 ### Pool + owner-tag stamping (`internal/provision/orchestrator.go`)
 
 `Orchestrator.SetActiveUser(a)` installs the operator identity on the orchestrator. When non-nil and not a fallback, every deploy:
-- stamps `murmur-owner=<name>` + `murmur-app=<app>` tags (VM via `ConfigureVMHardware.Tags`; LXC via `CreateLXCRequest.Tags`)
+- stamps `murmur-owner-<name>` + `murmur-app-<app>` tags (VM via `ConfigureVMHardware.Tags`; LXC via `CreateLXCRequest.Tags`). Delimiter is `-`, not `=`: PVE rejects `=` (and most punctuation) in tags.
 - assigns the new guest to pool `murmur-<name>` (VM via `CloneVMRequest.Pool`; LXC via `CreateLXCRequest.Pool`)
 - auto-creates the pool if missing (defensive — `[U]sers` add flow normally creates it, this is the orchestrator's safety net)
 
@@ -162,10 +162,9 @@ ProxMox ACLs scoped to `/pool/murmur-<name>` enforce that non-admin deployers li
 
 ### Role-based TUI filtering (`internal/tui/access.go`)
 
-- `ownerFilter(active, resources)` — filters resource lists by `murmur-owner=<name>` tag when `role.guests == "own"`; admin's `guests: all` passes through.
-- `appAllowed(active, appName)` — `role.apps` gate, supports `*` wildcard.
-- `actionAllowed(active, action)` — `role.actions` gate (deploy/teardown/patch/host-update/manage-users).
-- `App.tabAllowed(name)` — `role.tabs` gate; disallowed tabs render greyed in the top bar and a vermilion footer toast appears on press ("permission denied: role X does not include tab [k] name") that clears on next keypress (one-shot, no `tea.Tick`).
+- `ownerFilter(active, resources)` — filters resource lists by the `murmur-owner-<name>` tag when `role.guests == "own"`; admin's `guests: all` passes through. Wired into the VMs/LXCs, apps, teardown and patch views.
+- `appAllowed(active, appName)` — `role.apps` gate, supports `*` wildcard. Filters the apps-tab catalog (`AppsView.catalog`) and the patch catalog, so a scoped operator only sees/deploys/patches their allowed apps. (`actionAllowed` was removed — `role.actions` is informational; enforcement is by tabs + appAllowed + the PVE ACLs.)
+- `App.tabAllowed(name)` — `role.tabs` gate; disallowed tabs are **hidden** from the top bar (not greyed). Pressing a hidden tab's hotkey still raises a one-shot vermilion footer toast ("permission denied…"), no `tea.Tick`.
 
 `InspectApp` accepts the orchestrator's active user implicitly and filters replicas by owner when `role.guests == "own"` so the `[p]atch` tab's match_all counts reflect only the operator's deployments.
 
@@ -180,7 +179,7 @@ Auto-export on add (`internal/config/export.go`): after the PVE-side bundle succ
 Mutation guards:
 - **Roles are immutable.** No `[e]dit` action; the only mutation paths on existing users are rotate token / suspend / delete. Role change = delete + re-add.
 - **No self-delete for admin.** The action is visible in the submenu but greyed.
-- **Safe-delete pre-check.** Before showing the confirm prompt, an async query counts guests tagged `murmur-owner=<name>`. Running > 0 → refuse outright. Running = 0, stopped > 0 → proceed with augmented blurb naming the orphan-guest count.
+- **Safe-delete pre-check.** Before showing the confirm prompt, an async query counts guests tagged `murmur-owner-<name>`. Running > 0 → refuse outright. Running = 0, stopped > 0 → proceed with augmented blurb naming the orphan-guest count.
 - **Type-the-name confirm** for both delete and rotate.
 
 Secret modal: shown once. Single-line copy-friendly format. `[c]` tries xclip / wl-copy / pbcopy in order; `[y]` clears the secret from memory and closes.
@@ -258,4 +257,6 @@ If a major version bump is required, update one module at a time with a focused 
 - **Env loader supports inline `#` comments** — but only when whitespace-prefixed. `KEY=value # comment` → `value`; `KEY=value-with-#-no-space` → `value-with-#-no-space` (the `#` is part of the value). Quoted values suppress stripping: `KEY="x # y"` → `x # y`. This was added after an opaque 401 trap where an inline comment leaked into a `PROXMOX_TOKEN_SECRET` value.
 - **The `[x]users` tab uses arrow-keys + Enter, not letter hotkeys.** Letters would collide with the tab bar (a=apps, d=deploy, r=refresh, s=...). When extending the tab, follow the same convention; add new actions to the `userAction` submenu instead of binding new letters.
 - **No role editing — period.** The schema allows it but the UI doesn't expose it. Role changes = delete + re-add. Same goes for self-delete (admin can't escalate-out-of-existence). Don't add an `[e]dit` action without re-litigating the design decision.
-- **Auto-exported starter folders go to `<dirname>-<opname>/`**, not into the admin's repo. The export refuses if the path exists. New operators get a verbatim cluster.yaml + minimal cluster.env + README; they only need to drop in the murmur binary and they're ready to launch.
+- **Auto-exported operator kit is a single zip** `<dirname>-<opname>.zip` (sibling of cluster.yaml; the staging folder is removed after zipping). Refuses if either the folder or the zip exists. Contains a verbatim cluster.yaml, the murmur binary, a README with launch + TUI-usage docs, and a cluster.env that **defines every `${VAR}` the config references** (operator's own token real; everything else empty placeholders, SSH_IDENTITY defaulted) so the kit loads standalone. `$${VAR}` runtime escapes are excluded from that scan.
+- **Teardown is status-agnostic + HA-aware.** Don't gate the stop on `/cluster/resources` status — it's the pvestatd cache and lags both ways. Instead: attempt destroy; on "is running" hard-stop, wait, and retry (LXC needs a poll loop for cgroup/mount cleanup lag). HA-managed guests are removed from HA first (`DeleteHAResource`), or the HA stack restarts them mid-teardown and destroy 500s forever.
+- **PVE string-encodes some ints.** The token-create response returns `info.privsep`/`expire` as quoted strings; `proxmox.FlexInt` unmarshals number|string|null. Use it for PVE int fields that may come back string-encoded rather than a plain `int`.
