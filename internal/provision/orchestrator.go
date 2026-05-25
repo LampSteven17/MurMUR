@@ -23,6 +23,11 @@ type Orchestrator struct {
 	client   *proxmox.Client
 	progress func(ProgressEvent)
 
+	// active is the operator murmur is running as. May be nil for callers that
+	// don't care about ownership (e.g. tests). When non-nil and not a fallback
+	// admin, deploys stamp the owner tag and assign the operator's pool.
+	active *config.ActiveUser
+
 	// taskPoll is the polling cadence for WaitForTask. Override in tests.
 	taskPoll time.Duration
 	// agentMaxWait bounds the post-start wait for the guest agent / network.
@@ -40,6 +45,57 @@ func New(cfg *config.Config, client *proxmox.Client) *Orchestrator {
 		// back to ~2 min (clone+start should be all that's left).
 		agentMaxWait: 10 * time.Minute,
 	}
+}
+
+// SetActiveUser installs the operator identity. When set to a non-fallback
+// user, deploys stamp `murmur-owner-<name>` + `murmur-app-<app>` tags and
+// assign the new guest to pool `murmur-<name>` (creating the pool on demand).
+func (o *Orchestrator) SetActiveUser(a *config.ActiveUser) { o.active = a }
+
+// ownerTagSet returns the comma-joined tag string to stamp on a new guest.
+// Empty string when no active operator or fallback admin (= today's behavior).
+// appName is optional; when non-empty a `murmur-app-<appName>` tag is added so
+// the apps tab can match catalog entries by tag rather than hostname.
+//
+// The key/value join uses `-`, not `=`: PVE rejects `=` (and most punctuation)
+// in tags. Matching is always exact-string, never split, so a `-` inside the
+// name or app is unambiguous.
+func (o *Orchestrator) ownerTagSet(appName string) string {
+	if o.active == nil || o.active.Fallback || o.active.Name == "" {
+		return ""
+	}
+	tags := []string{"murmur-owner-" + o.active.Name}
+	if appName != "" {
+		tags = append(tags, "murmur-app-"+appName)
+	}
+	return strings.Join(tags, ",")
+}
+
+// ownerPool returns the pool name the active operator's guests land in,
+// auto-creating it if missing. Empty return = no pool assignment (fallback
+// admin / no active user).
+func (o *Orchestrator) ownerPool(ctx context.Context) (string, error) {
+	if o.active == nil || o.active.Fallback || o.active.Name == "" {
+		return "", nil
+	}
+	name := "murmur-" + o.active.Name
+	pools, err := o.client.ListPools(ctx)
+	if err != nil {
+		return "", fmt.Errorf("deploy: listing pools to check ownership pool: %w", err)
+	}
+	for _, p := range pools {
+		if p.PoolID == name {
+			return name, nil
+		}
+	}
+	// Auto-create — the operator's role is implicitly "owns guests in pool X",
+	// and we don't want first-deploy to fail just because the pool wasn't
+	// pre-created. The [U]sers tab also creates pools at add-user time; this
+	// is the orchestrator-side safety net.
+	if err := o.client.CreatePool(ctx, name, fmt.Sprintf("murmur ownership pool for operator %q (auto-created at first deploy)", o.active.Name)); err != nil {
+		return "", fmt.Errorf("deploy: auto-creating ownership pool %q: %w", name, err)
+	}
+	return name, nil
 }
 
 // SetProgress installs a typed progress callback. Pass nil to disable.
@@ -225,6 +281,16 @@ func (o *Orchestrator) defaultUser(image config.Image) string {
 	return "root"
 }
 
+// operatorPubKey returns the SSH public key to bake into a deploy. Precedence:
+// the active operator's stored ssh_pubkey (set via the [x]users add flow),
+// then the on-disk cluster.ssh.identity counterpart. Empty when neither is set.
+func (o *Orchestrator) operatorPubKey() (string, error) {
+	if o.active != nil && !o.active.Fallback && o.active.User.SSHPubKey != "" {
+		return o.active.User.SSHPubKey, nil
+	}
+	return o.readSSHPubKey()
+}
+
 // readSSHPubKey reads the public-key counterpart of cluster.ssh.identity,
 // expanding ~/ and resolving an optional trailing ".pub". Empty path → "".
 func (o *Orchestrator) readSSHPubKey() (string, error) {
@@ -332,7 +398,14 @@ func (o *Orchestrator) deployVM(ctx context.Context, r resolvedRequest) (*Result
 	}
 	o.emit(StepResolve, fmt.Sprintf("new VMID %d", newVMID), 25)
 
-	// Clone.
+	pool, err := o.ownerPool(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Clone. Pool assignment happens at clone time so the new VM lands in the
+	// operator's pool from birth — ProxMox-side ACL enforcement applies
+	// immediately rather than from a separate AddPoolMember call.
 	o.emit(StepClone, fmt.Sprintf("cloning template → %s/%d", targetNode, newVMID), 30)
 	upid, err := o.client.CloneVM(ctx, proxmox.CloneVMRequest{
 		SourceNode: tplNode,
@@ -341,6 +414,7 @@ func (o *Orchestrator) deployVM(ctx context.Context, r resolvedRequest) (*Result
 		Name:       r.req.Name,
 		TargetNode: targetNode,
 		Full:       true,
+		Pool:       pool,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("deploy: clone request: %w", err)
@@ -349,13 +423,16 @@ func (o *Orchestrator) deployVM(ctx context.Context, r resolvedRequest) (*Result
 		return nil, err
 	}
 
-	// Configure hardware + cloud-init + agent.
+	// Configure hardware + cloud-init + agent. Owner tags are stamped here
+	// because the clone above doesn't accept tags directly — they go through
+	// the same /config PUT path as the rest of the hardware.
 	o.emit(StepConfigure, "applying hardware (cores/memory/agent)", 55)
 	if err := o.client.ConfigureVMHardware(ctx, targetNode, newVMID, proxmox.VMHardware{
 		Cores:        r.flavor.CPU,
 		Sockets:      1,
 		Memory:       r.flavor.MemoryMB,
 		AgentEnabled: true,
+		Tags:         o.ownerTagSet(r.req.AppName),
 	}); err != nil {
 		return nil, fmt.Errorf("deploy: configure hardware: %w", err)
 	}
@@ -366,7 +443,7 @@ func (o *Orchestrator) deployVM(ctx context.Context, r resolvedRequest) (*Result
 	}
 	pubKey := r.req.SSHPubKey
 	if pubKey == "" {
-		k, err := o.readSSHPubKey()
+		k, err := o.operatorPubKey()
 		if err != nil {
 			return nil, err
 		}
@@ -456,7 +533,7 @@ func (o *Orchestrator) deployLXC(ctx context.Context, r resolvedRequest) (*Resul
 
 	pubKey := r.req.SSHPubKey
 	if pubKey == "" {
-		k, err := o.readSSHPubKey()
+		k, err := o.operatorPubKey()
 		if err != nil {
 			return nil, err
 		}
@@ -476,6 +553,11 @@ func (o *Orchestrator) deployLXC(ctx context.Context, r resolvedRequest) (*Resul
 		netIP = "dhcp"
 	}
 
+	pool, err := o.ownerPool(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	createReq := proxmox.CreateLXCRequest{
 		Node:       targetNode,
 		VMID:       newVMID,
@@ -490,6 +572,8 @@ func (o *Orchestrator) deployLXC(ctx context.Context, r resolvedRequest) (*Resul
 		Bridge:     bridge,
 		NetIP:      netIP,
 		NetGateway: r.req.Gateway,
+		Tags:       o.ownerTagSet(r.req.AppName),
+		Pool:       pool,
 		// Unprivileged + nesting is the standard "modern app LXC" shape:
 		// safe-by-default isolation plus the feature docker needs to start.
 		// keyctl=1 would also be useful for some apps that touch the

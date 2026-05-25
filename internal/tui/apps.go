@@ -73,6 +73,7 @@ type appResult struct {
 type AppsView struct {
 	cfg        *config.Config
 	client     *proxmox.Client
+	active     *config.ActiveUser
 	styles     Styles
 	configDir  string // dir containing cluster.yaml; WorkDir for post-deploy
 
@@ -126,10 +127,11 @@ type appsKeyMap struct {
 // NewAppsView wires the apps tab. configPath is used as the working directory
 // for playbook/post-deploy execution so relative paths resolve as the
 // operator expects.
-func NewAppsView(cfg *config.Config, client *proxmox.Client, configPath string) *AppsView {
+func NewAppsView(cfg *config.Config, client *proxmox.Client, active *config.ActiveUser, configPath string) *AppsView {
 	return &AppsView{
 		cfg:       cfg,
 		client:    client,
+		active:    active,
 		styles:    NewStyles(DefaultTheme),
 		configDir: filepath.Dir(configPath),
 		selected:  map[string]bool{},
@@ -192,7 +194,10 @@ func (v *AppsView) Update(msg tea.Msg) (View, tea.Cmd) {
 		}
 		v.err = nil
 		v.fetched = time.Now()
-		v.rows = m.Resources
+		// Filter guests by owner tag for non-admin operators so coverage and
+		// collision indicators reflect only what this operator sees. Admins
+		// + the legacy fallback path keep the full list.
+		v.rows = ownerFilter(v.active, m.Resources)
 		return v, nil
 	case appsProgressMsg:
 		v.activePct = m.Percent
@@ -243,8 +248,22 @@ func (v *AppsView) Update(msg tea.Msg) (View, tea.Cmd) {
 
 // ── picking ────────────────────────────────────────────────────────────────
 
+// catalog returns the apps the active operator may deploy — filtered by the
+// role's apps: list via appAllowed (fallback admin / "*" sees them all). The
+// picker, render, and resolveTargets all run through this, so a scoped operator
+// (e.g. a deployer limited to one app) never sees or deploys the rest.
+func (v *AppsView) catalog() []config.App {
+	out := make([]config.App, 0, len(v.cfg.Apps))
+	for _, a := range v.cfg.Apps {
+		if appAllowed(v.active, a.Name) {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 func (v *AppsView) updatePicking(m tea.KeyMsg) (View, tea.Cmd) {
-	apps := v.cfg.Apps
+	apps := v.catalog()
 	switch {
 	case key.Matches(m, v.keys.Up):
 		if v.cursor > 0 {
@@ -420,7 +439,7 @@ func (v *AppsView) targetsNeedSecrets() bool {
 func (v *AppsView) resolveTargets() []deployTarget {
 	nodesPerApp := v.nodesRunningByApp()
 	var out []deployTarget
-	for _, a := range v.cfg.Apps {
+	for _, a := range v.catalog() {
 		if !v.selected[a.Name] {
 			continue
 		}
@@ -486,6 +505,7 @@ func (v *AppsView) startBatch() tea.Cmd {
 	v.msgs = make(chan tea.Msg, 256)
 
 	orch := provision.New(v.cfg, v.client)
+	orch.SetActiveUser(v.active)
 	msgs := v.msgs
 	orch.SetProgress(func(ev provision.ProgressEvent) {
 		select {
@@ -508,6 +528,7 @@ func (v *AppsView) startBatch() tea.Cmd {
 				Type:              gtype,
 				Image:             t.app.Image,
 				Flavor:            t.app.Flavor,
+				AppName:           t.app.Name, // stamps `murmur-app-<name>` so patch/apps tabs can match by tag
 				TargetNode:        t.node,
 				PostDeployCommand: buildPostDeployCommand(t.app, configDir),
 				PostDeployRemote:  t.app.PostDeploy != "", // raw shell → run on guest
@@ -665,9 +686,9 @@ func (v *AppsView) renderPicking(width int) string {
 			lipgloss.NewStyle().Foreground(DefaultTheme.Vermilion).Render(v.err.Error())
 	case v.loading && !v.loaded:
 		return " " + v.styles.Subtle.Render(Glyph.InFlight+" consulting the conclave…")
-	case len(v.cfg.Apps) == 0:
+	case len(v.catalog()) == 0:
 		return " " + v.styles.Subtle.Render(Glyph.Empty+
-			" no apps in cluster.yaml — declare an `apps:` section to use this tab.")
+			" no apps available — none declared in cluster.yaml, or your role grants none.")
 	}
 
 	muted := lipgloss.NewStyle().Foreground(DefaultTheme.Muted)
@@ -678,8 +699,9 @@ func (v *AppsView) renderPicking(width int) string {
 	nodesPerApp := v.nodesRunningByApp()
 	nodeCount := len(v.cfg.Cluster.Nodes)
 
-	lines := []string{v.styles.Title.Render("APPS") + "  " + muted.Render(fmt.Sprintf("(%d)", len(v.cfg.Apps)))}
-	for i, a := range v.cfg.Apps {
+	apps := v.catalog()
+	lines := []string{v.styles.Title.Render("APPS") + "  " + muted.Render(fmt.Sprintf("(%d)", len(apps)))}
+	for i, a := range apps {
 		cursor := "  "
 		if v.cursor == i {
 			cursor = v.styles.SelectionMark.Render("▶ ")
@@ -882,7 +904,7 @@ func (v *AppsView) renderConfirm(width int) string {
 func (v *AppsView) skippedFromPicked() []config.App {
 	nodesPerApp := v.nodesRunningByApp()
 	var skipped []config.App
-	for _, a := range v.cfg.Apps {
+	for _, a := range v.catalog() {
 		if !v.selected[a.Name] {
 			continue
 		}

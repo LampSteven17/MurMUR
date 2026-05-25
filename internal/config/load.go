@@ -43,6 +43,12 @@ func LoadFile(path string) (*Config, error) {
 	if err := yaml.Unmarshal(raw, &root); err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
+	// Stash users[*].token_secret raw values BEFORE substituteScalars runs, so
+	// that operators only need their own ${TOKEN_*} in their cluster.env.
+	// We restore the raw values onto cfg.Users after decode; substitution is
+	// then performed at identity-selection time on the active user only.
+	deferred := stashUserTokenSecrets(&root)
+
 	if err := substituteScalars(&root); err != nil {
 		return nil, fmt.Errorf("interpolate config %s: %w", path, err)
 	}
@@ -54,7 +60,15 @@ func LoadFile(path string) (*Config, error) {
 
 	cfg.Flavors = mergeFlavors(cfg.Flavors)
 	cfg.Images = mergeImages(cfg.Images)
+	cfg.Roles = mergeRoles(cfg.Roles)
 	cfg.Cluster.SSH.Users = mergeSSHUsers(cfg.Cluster.SSH.Users)
+
+	// Restore deferred raw token_secret values (keyed by user name).
+	for i := range cfg.Users {
+		if raw, ok := deferred[cfg.Users[i].Name]; ok {
+			cfg.Users[i].TokenSecret = raw
+		}
+	}
 
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -98,8 +112,10 @@ func findEnvFile(configPath string) string {
 }
 
 // loadEnvFile populates os.Setenv from a KEY=value file.
-// Supports: comments (#), blank lines, optional `export ` prefix,
-// optional single- or double-quoted values. No multi-line values.
+// Supports: full-line comments (#), inline `<space>#` trailing comments on
+// unquoted values, blank lines, optional `export ` prefix, optional single-
+// or double-quoted values (which suppress inline-comment stripping so the
+// value can legitimately contain `#`). No multi-line values.
 func loadEnvFile(path string) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -117,17 +133,44 @@ func loadEnvFile(path string) error {
 		}
 		key := strings.TrimSpace(ln[:eq])
 		val := strings.TrimSpace(ln[eq+1:])
-		if len(val) >= 2 {
-			first, last := val[0], val[len(val)-1]
-			if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
-				val = val[1 : len(val)-1]
+		// Quoted-value handling first: if val starts with " or ', find the
+		// matching closing quote, and treat anything after as optional
+		// whitespace + inline comment. Inside the quotes, `#` is literal.
+		if len(val) > 0 && (val[0] == '"' || val[0] == '\'') {
+			quote := val[0]
+			end := strings.IndexByte(val[1:], quote)
+			if end < 0 {
+				return fmt.Errorf("%s:%d: unterminated %c quote in value", path, i+1, quote)
 			}
+			content := val[1 : 1+end]
+			tail := strings.TrimSpace(val[2+end:])
+			if tail != "" && !strings.HasPrefix(tail, "#") {
+				return fmt.Errorf("%s:%d: unexpected content after closing quote: %q", path, i+1, tail)
+			}
+			val = content
+		} else if hash := indexInlineComment(val); hash >= 0 {
+			// Unquoted: strip ` #...` tail. The whitespace-before-# guard
+			// keeps `#` legitimately in values (passwords, URL fragments).
+			val = strings.TrimRight(val[:hash], " \t")
 		}
 		if err := os.Setenv(key, val); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// indexInlineComment returns the index of the `#` that starts an inline
+// comment (one preceded by ASCII whitespace), or -1 if none. The
+// whitespace-prefix requirement avoids stripping a `#` that's part of the
+// value itself (e.g. URL fragments, passwords containing `#`).
+func indexInlineComment(s string) int {
+	for i := 1; i < len(s); i++ {
+		if s[i] == '#' && (s[i-1] == ' ' || s[i-1] == '\t') {
+			return i
+		}
+	}
+	return -1
 }
 
 // varRE matches `${VAR}` (loader-time substitution) and `$${VAR}` (escape:
@@ -189,6 +232,55 @@ func walkScalars(n *yaml.Node, fn func(*yaml.Node)) {
 	for _, c := range n.Content {
 		walkScalars(c, fn)
 	}
+}
+
+// stashUserTokenSecrets walks the YAML AST, finds every entry under the
+// top-level `users:` sequence, extracts each entry's `token_secret` raw
+// value (preserving ${VAR} references), maps it by the entry's `name`, and
+// replaces the AST scalar with an empty string. The caller restores the raw
+// strings onto the decoded cfg.Users after substitution and decode. This is
+// how we keep each operator's cluster.env scoped to their own token.
+func stashUserTokenSecrets(root *yaml.Node) map[string]string {
+	out := map[string]string{}
+	top := root
+	if top != nil && top.Kind == yaml.DocumentNode && len(top.Content) > 0 {
+		top = top.Content[0]
+	}
+	if top == nil || top.Kind != yaml.MappingNode {
+		return out
+	}
+	// Top-level mapping: keys are at even indices.
+	var users *yaml.Node
+	for i := 0; i+1 < len(top.Content); i += 2 {
+		if top.Content[i].Value == "users" {
+			users = top.Content[i+1]
+			break
+		}
+	}
+	if users == nil || users.Kind != yaml.SequenceNode {
+		return out
+	}
+	for _, entry := range users.Content {
+		if entry.Kind != yaml.MappingNode {
+			continue
+		}
+		var name, secret *yaml.Node
+		for i := 0; i+1 < len(entry.Content); i += 2 {
+			switch entry.Content[i].Value {
+			case "name":
+				name = entry.Content[i+1]
+			case "token_secret":
+				secret = entry.Content[i+1]
+			}
+		}
+		if name == nil || secret == nil {
+			continue
+		}
+		out[name.Value] = secret.Value
+		secret.Value = ""
+		secret.Tag = "!!str"
+	}
+	return out
 }
 
 func uniq(in []string) []string {

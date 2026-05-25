@@ -61,6 +61,7 @@ type patchResult struct {
 type PatchView struct {
 	cfg    *config.Config
 	client *proxmox.Client
+	active *config.ActiveUser
 	styles Styles
 
 	cursor   int
@@ -96,16 +97,18 @@ type patchKeyMap struct {
 	NewAgain key.Binding
 }
 
-func NewPatchView(cfg *config.Config, client *proxmox.Client) *PatchView {
+func NewPatchView(cfg *config.Config, client *proxmox.Client, active *config.ActiveUser) *PatchView {
 	apps := make([]config.App, 0, len(cfg.Apps))
 	for _, a := range cfg.Apps {
-		if a.Update != "" {
+		// Patchable = has an update: command AND the role may act on it.
+		if a.Update != "" && appAllowed(active, a.Name) {
 			apps = append(apps, a)
 		}
 	}
 	return &PatchView{
 		cfg:      cfg,
 		client:   client,
+		active:   active,
 		styles:   NewStyles(DefaultTheme),
 		selected: map[string]bool{},
 		apps:     apps,
@@ -289,6 +292,7 @@ func (v *PatchView) startBatch() tea.Cmd {
 	v.msgs = make(chan tea.Msg, 256)
 
 	orch := provision.New(v.cfg, v.client)
+	orch.SetActiveUser(v.active)
 	msgs := v.msgs
 	orch.SetProgress(func(ev provision.ProgressEvent) {
 		select {
@@ -408,9 +412,11 @@ func rowRunning(r patchRow) bool {
 func (v *PatchView) fetch() tea.Cmd {
 	cfg := v.cfg
 	client := v.client
+	active := v.active
 	apps := v.apps
 	return func() tea.Msg {
 		orch := provision.New(cfg, client)
+		orch.SetActiveUser(active)
 		out := make([]provision.AppRuntimeInfo, len(apps))
 		const concurrency = 5
 		sem := make(chan struct{}, concurrency)

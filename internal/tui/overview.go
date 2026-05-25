@@ -20,6 +20,7 @@ import (
 type OverviewView struct {
 	cfg     *config.Config
 	client  *proxmox.Client
+	active  *config.ActiveUser
 	styles  Styles
 	loading bool
 	loaded  bool
@@ -54,10 +55,11 @@ type clusterStats struct {
 	StorageCount int
 }
 
-func NewOverviewView(cfg *config.Config, client *proxmox.Client) *OverviewView {
+func NewOverviewView(cfg *config.Config, client *proxmox.Client, active *config.ActiveUser) *OverviewView {
 	return &OverviewView{
 		cfg:    cfg,
 		client: client,
+		active: active,
 		styles: NewStyles(DefaultTheme),
 	}
 }
@@ -121,7 +123,7 @@ func (v *OverviewView) View(width, height int) string {
 	default:
 		b.WriteString(v.renderBars())
 		b.WriteString("\n\n")
-		b.WriteString(v.renderActions())
+		b.WriteString(v.renderCommands())
 		b.WriteString("\n\n")
 		b.WriteString(v.renderClusterSummary())
 		b.WriteString("\n\n")
@@ -137,13 +139,24 @@ func (v *OverviewView) View(width, height int) string {
 	return padBlock(b.String(), width, height)
 }
 
-// renderLogin shows the API token id that murmur is authenticated as.
+// renderLogin shows the resolved operator identity + role. In fallback mode
+// (no users: section) it falls back to the cluster.api.token_id with an
+// "implicit admin" annotation so the operator can tell from a glance whether
+// the multi-user layer is in effect.
 func (v *OverviewView) renderLogin() string {
-	user := v.cfg.Cluster.API.TokenID
-	if user == "" {
-		user = "(no token configured)"
+	subtle := v.styles.Subtle
+	info := v.styles.Info
+	if v.active == nil || v.active.Fallback {
+		token := v.cfg.Cluster.API.TokenID
+		if token == "" {
+			token = "(no token configured)"
+		}
+		return " " + subtle.Render("logged in as ") + info.Render(token) +
+			subtle.Render("  ·  implicit admin (no users: section)")
 	}
-	return " " + v.styles.Subtle.Render("logged in as ") + v.styles.Info.Render(user)
+	return " " + subtle.Render("operator ") + info.Render(v.active.Name) +
+		subtle.Render("  ·  role ") + info.Render(v.active.Role.Name) +
+		subtle.Render("  ·  token ") + info.Render(v.active.TokenID)
 }
 
 // padBlock pads s to exactly width columns × height rows with spaces.
@@ -227,28 +240,80 @@ func (v *OverviewView) renderBar(label string, used, total int64, value string) 
 	)
 }
 
-// renderActions draws the primary actions menu.
-func (v *OverviewView) renderActions() string {
+// commandEntry is one row in the overview commands panel.
+type commandEntry struct {
+	key, name, desc string
+	tab             string // tab name for role.tabs gating; empty = global (always shown)
+}
+
+// actionCommands lists every action tab the operator can reach plus a
+// one-line description. Order matches the top tab bar.
+var actionCommands = []commandEntry{
+	{key: "a", name: "apps", desc: "deploy or update from the cluster.yaml app catalog", tab: "apps"},
+	{key: "d", name: "deploy", desc: "provision one raw guest from a form (no catalog)", tab: "deploy"},
+	{key: "t", name: "teardown", desc: "stop + destroy guests (multi-select)", tab: "teardown"},
+	{key: "u", name: "update", desc: "apt dist-upgrade on PVE host nodes", tab: "update"},
+	{key: "p", name: "patch", desc: "re-run `update:` on running app guests", tab: "patch"},
+	{key: "x", name: "users", desc: "add / remove / rotate murmur operators (admin only)", tab: "users"},
+}
+
+// viewCommands lists every read-only tab.
+var viewCommands = []commandEntry{
+	{key: "1", name: "overview", desc: "this page — cluster summary + bars", tab: "overview"},
+	{key: "2", name: "VMs", desc: "list all virtual machines", tab: "vms"},
+	{key: "3", name: "LXCs", desc: "list all containers", tab: "lxcs"},
+	{key: "4", name: "nodes", desc: "list PVE host nodes", tab: "nodes"},
+	{key: "5", name: "templates", desc: "list VM/LXC templates", tab: "templates"},
+}
+
+// renderCommands draws a two-column listing of the tabs the active role can
+// actually reach + a one-line description. Tabs the role doesn't include are
+// hidden entirely (matching the top tab bar). Global keys (r/q) always show.
+func (v *OverviewView) renderCommands() string {
+	titleStyle := v.styles.Title
 	keyStyle := lipgloss.NewStyle().Foreground(DefaultTheme.Gold).Bold(true)
 	labelStyle := lipgloss.NewStyle().Foreground(DefaultTheme.Ink).Bold(true)
 	descStyle := lipgloss.NewStyle().Foreground(DefaultTheme.Muted)
 
-	row := func(k, label, desc string) string {
-		return fmt.Sprintf("   %s  %s  %s",
-			keyStyle.Render("["+k+"]"),
-			labelStyle.Render(padRight(label, 10)),
-			descStyle.Render("· "+desc),
-		)
+	allowedTab := func(name string) bool {
+		if v.active == nil || v.active.Fallback {
+			return true // legacy single-operator path → all tabs allowed
+		}
+		return v.active.Role.Allows(v.active.Role.Tabs, name)
 	}
 
-	lines := []string{
-		v.styles.Title.Render(" ACTIONS"),
-		row("d", "deploy", "provision new guest"),
-		row("t", "teardown", "destroy existing guest"),
-		row("u", "update", "refresh templates / pull images"),
+	row := func(c commandEntry) string {
+		return fmt.Sprintf("   %s  %s  %s",
+			keyStyle.Render(" "+c.key+" "),
+			labelStyle.Render(padRight(c.name, 10)),
+			descStyle.Render("· "+c.desc),
+		)
 	}
-	return strings.Join(lines, "\n")
+	section := func(b *strings.Builder, title string, cmds []commandEntry, gate bool) {
+		var rows []string
+		for _, c := range cmds {
+			if gate && !allowedTab(c.tab) {
+				continue // hidden — role doesn't include this tab
+			}
+			rows = append(rows, row(c))
+		}
+		if len(rows) == 0 {
+			return
+		}
+		b.WriteString(titleStyle.Render(title) + "\n")
+		b.WriteString(strings.Join(rows, "\n") + "\n\n")
+	}
+
+	var b strings.Builder
+	section(&b, " COMMANDS  ·  ACTIONS", actionCommands, true)
+	section(&b, " COMMANDS  ·  VIEWS", viewCommands, true)
+	section(&b, " COMMANDS  ·  GLOBAL", []commandEntry{
+		{key: "r", name: "refresh", desc: "re-fetch the current view's data"},
+		{key: "q", name: "quit", desc: "exit murmur (also Ctrl+C)"},
+	}, false)
+	return strings.TrimRight(b.String(), "\n")
 }
+
 
 // renderClusterSummary draws the existing rollup beneath the bars+actions.
 func (v *OverviewView) renderClusterSummary() string {

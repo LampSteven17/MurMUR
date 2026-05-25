@@ -71,7 +71,7 @@ Pure docs/yaml/memory edits don't need the build+copy.
 3. If the endpoint mutates cluster state, prefix the method name with the verb (`CreateVM`, `DestroyLXC`, `MigrateContainer`).
 4. Add a smoke test if the response shape is non-trivial — feed a recorded JSON fixture into the unmarshal path.
 
-## App lifecycle (apps/deploy/teardown/update/patch tabs)
+## App lifecycle (apps/deploy/teardown/update/patch/users tabs)
 
 The app lifecycle lives in `internal/provision/` and is driven by entries in `cluster.yaml`'s `apps:` list. Each tab maps to one provision entrypoint:
 
@@ -82,8 +82,11 @@ The app lifecycle lives in `internal/provision/` and is driven by entries in `cl
 | `[t]eardown` | `teardown.go`         | `Orchestrator.Teardown(TeardownRequest)`      | Stop+destroy VM/LXC with purge |
 | `[u]pdate`   | `update.go`           | `Orchestrator.UpgradeHost(node)`              | apt dist-upgrade on PVE nodes (host-side, via root SSH) |
 | `[p]atch`    | `patch.go`            | `Orchestrator.PatchApp` / `PatchAppInstance`  | SSH to running guest, run app's `update:` command |
+| `[x]users`   | `users.go`            | `proxmox.{Create,Delete}User/Pool/Token/ACL`  | Admin-only — add/delete/rotate-token/suspend operators; auto-exports starter folder |
 
 There's no `DeployApp` / `DestroyGuest` — apps.go builds a `provision.Request` from the picked `config.App` and the orchestrator handles VM vs LXC internally.
+
+The top tab bar uses compressed "browser-tab" rendering: inactive tabs show `<key> <abbrev>` (first 3 chars of label), active expands to `<key> <full label>` with a heavy `━━━` underline below. `[x]users` uses capital-letter key namespace so it doesn't collide with `[u]pdate`; arrow-keys + Enter drive its submenu since letter hotkeys would shadow tab-switch keys.
 
 Key conventions:
 
@@ -103,6 +106,107 @@ Key conventions:
 2. Add to the `apps:` example in `configs/example.yaml` with a `#` comment.
 3. Wire it through the relevant `Orchestrator` method(s) in `internal/provision/` and `provision.Request` if it must reach the orchestrator.
 4. Surface it in the matching TUI tab (`internal/tui/{apps,patch,...}.go`) if the operator should see/select it.
+
+## Multi-user identity + access control
+
+Murmur supports multiple named operators with role-scoped permissions. Both the murmur side (TUI tab/list filtering) and the ProxMox side (per-user tokens with bundled ACLs) cooperate — murmur is the ergonomic layer, ProxMox ACLs are the actual perimeter.
+
+### Schema additions (cluster.yaml)
+
+```yaml
+users:
+  - name: alice                          # short identity used by --as / MURMUR_USER
+    role: deployer                       # must match a name in roles: (or a builtin)
+    proxmox_user: alice@pve              # backing PVE user
+    proxmox_token: murmur                # token name (full id assembled as "alice@pve!murmur")
+    token_secret: ${ALICE_TOKEN}         # resolved LAZILY at identity-selection time
+    comment: Alice — application deployer
+
+roles:                                   # extends 2 builtins (admin/deployer)
+  - name: lab-only-deployer
+    tabs:    [overview, apps, deploy, patch]
+    actions: [deploy, patch]
+    apps:    [edge-connector, twingate-connector]
+    guests:  own                         # "own" → list views filter by murmur-owner tag
+```
+
+Both sections are optional. If both empty, murmur uses `cluster.api.token_*` as an implicit-admin fallback (v0.1 behavior).
+
+### Identity selection (`cmd/murmur/main.go` + `internal/config/identity.go`)
+
+`config.ResolveActive(asFlag)` returns `*ActiveUser`. Resolution order:
+1. `--as <name>` CLI flag
+2. `$MURMUR_USER` env var
+3. unambiguous single-entry default (one user in `users:`)
+4. credential inference: the one operator whose `token_secret` resolves in the
+   environment (each operator's `cluster.env` carries only their own token, so a
+   single match is an unambiguous identity). >1 match → ambiguous error.
+5. loud error listing valid names
+
+The active user's `${VAR}` token secret is expanded against `os.Getenv` at this point. Missing env vars fail loud with the var name — but ONLY the active user's secret is checked. Other operators' tokens stay unresolved so each operator's `cluster.env` only contains their own secret.
+
+`whoami` CLI prints the resolved identity + role for sanity-checking without hitting the API.
+
+### Lazy token resolution (`internal/config/load.go` `stashUserTokenSecrets`)
+
+The loader's `substituteScalars` would fail loudly on undefined env vars, but that would force every operator's `cluster.env` to declare every other operator's `${TOKEN_VAR}`. Workaround: before `substituteScalars` runs, walk the AST, stash `users[*].token_secret` raw values into a map keyed by name, replace the AST scalars with empty strings so substitution skips them. After decode, restore the raw values onto `cfg.Users`. Resolution happens later in `ResolveActive` for the active user only.
+
+### Pool + owner-tag stamping (`internal/provision/orchestrator.go`)
+
+`Orchestrator.SetActiveUser(a)` installs the operator identity on the orchestrator. When non-nil and not a fallback, every deploy:
+- stamps `murmur-owner=<name>` + `murmur-app=<app>` tags (VM via `ConfigureVMHardware.Tags`; LXC via `CreateLXCRequest.Tags`)
+- assigns the new guest to pool `murmur-<name>` (VM via `CloneVMRequest.Pool`; LXC via `CreateLXCRequest.Pool`)
+- auto-creates the pool if missing (defensive — `[U]sers` add flow normally creates it, this is the orchestrator's safety net)
+
+ProxMox ACLs scoped to `/pool/murmur-<name>` enforce that non-admin deployers literally cannot touch other operators' guests via raw `pvesh`. Tags carry murmur-side metadata for the apps-tab catalog matching.
+
+### Role-based TUI filtering (`internal/tui/access.go`)
+
+- `ownerFilter(active, resources)` — filters resource lists by `murmur-owner=<name>` tag when `role.guests == "own"`; admin's `guests: all` passes through.
+- `appAllowed(active, appName)` — `role.apps` gate, supports `*` wildcard.
+- `actionAllowed(active, action)` — `role.actions` gate (deploy/teardown/patch/host-update/manage-users).
+- `App.tabAllowed(name)` — `role.tabs` gate; disallowed tabs render greyed in the top bar and a vermilion footer toast appears on press ("permission denied: role X does not include tab [k] name") that clears on next keypress (one-shot, no `tea.Tick`).
+
+`InspectApp` accepts the orchestrator's active user implicitly and filters replicas by owner when `role.guests == "own"` so the `[p]atch` tab's match_all counts reflect only the operator's deployments.
+
+### [U]sers tab (admin-only)
+
+Tab key `x` (capital U was unergonomic). Admin-only: greyed in the tab bar for any role whose `tabs:` doesn't include `users`. List shows ONLY cluster.yaml-managed users — orphan PVE accounts (`root@pam`, `traefik-sync@pve`, etc.) are hidden because murmur isn't trying to be a generic PVE user manager.
+
+Navigation: arrow-keys + Enter only (no letter hotkeys — they'd collide with the tab bar's a/d/t/u/p/x). Row 0 is a virtual `+ add new user` row; rows 1..N are users. Enter on +add opens the form; Enter on a user opens an action submenu (rotate / suspend / delete / close) where ↑↓ picks and Enter activates.
+
+Auto-export on add (`internal/config/export.go`): after the PVE-side bundle succeeds and `cluster.yaml` is updated, murmur writes a sibling folder `<dirname>-<opname>/` containing a verbatim cluster.yaml copy, a minimal cluster.env (operator's identity + token + placeholder hints for other vars admin's env declared — never echoing admin's values), and a README. Refuses if the folder exists. Path surfaces in the secret modal.
+
+Mutation guards:
+- **Roles are immutable.** No `[e]dit` action; the only mutation paths on existing users are rotate token / suspend / delete. Role change = delete + re-add.
+- **No self-delete for admin.** The action is visible in the submenu but greyed.
+- **Safe-delete pre-check.** Before showing the confirm prompt, an async query counts guests tagged `murmur-owner=<name>`. Running > 0 → refuse outright. Running = 0, stopped > 0 → proceed with augmented blurb naming the orphan-guest count.
+- **Type-the-name confirm** for both delete and rotate.
+
+Secret modal: shown once. Single-line copy-friendly format. `[c]` tries xclip / wl-copy / pbcopy in order; `[y]` clears the secret from memory and closes.
+
+### ACL bundles per role (`internal/tui/users.go` `aclBundleFor`)
+
+Add-user flow applies a hard-coded PVE ACL bundle per role:
+
+| Role | ACL set |
+|---|---|
+| `admin`    | `Administrator` on `/` |
+| `deployer` | `PVEVMAdmin` + `PVEPoolAdmin` on `/pool/murmur-<name>`, `PVETemplateUser` on `/pool/murmur-templates`, `PVEDatastoreUser` on `/storage`, `PVESDNUser` on `/sdn`, `PVEAuditor` on `/` |
+
+Two PVE gotchas drive the deployer bundle:
+- **"Deeper level replaces inherited."** `PVEVMAdmin` on `/pool/murmur-<name>` shadows the `PVEAuditor` inherited from `/` on that path, so `Pool.Audit`/`Pool.Allocate` must be re-granted there explicitly (`PVEPoolAdmin`) — otherwise the operator can't see or allocate into their own pool.
+- **Clone needs the source.** Templates live in the shared `murmur-templates` pool (added at build time); `PVETemplateUser` there is what lets a deployer clone them without any access to other operators' guests.
+
+Only `admin` and `deployer` are builtin. User-defined roles in `cluster.yaml` are valid for murmur-side gating but the `[a]dd` form only configures ACLs for these two. Custom-role users need manual ACL setup via the PVE web UI.
+
+### Procedure: extend the users/roles surface
+
+1. Add to `User` or `Role` in `internal/config/types.go` with a `yaml:"..."` tag + doc comment.
+2. Add validation in `internal/config/validate.go` (required fields, enum constraints).
+3. If the new field is a secret/identity that should be lazy-resolved per operator, extend `stashUserTokenSecrets` in `load.go` and the restore path in `LoadFile`.
+4. Surface it in the `[U]sers` tab's add form (`internal/tui/users.go`) if operator-editable.
+5. Add the field to `configs/example.yaml` users:/roles: block with a `#` comment.
 
 ### Current App schema (cluster.yaml `apps:` entries)
 
@@ -151,3 +255,7 @@ If a major version bump is required, update one module at a time with a focused 
 - **Don't use `--sysctl` for non-namespaced kernel settings inside an LXC.** Things like `net.ipv4.ping_group_range` are host-global; docker inside an unprivileged LXC can't write them and runc refuses to start the container with an OCI error. Set them on the PVE host (or via the LXC's raw lxc.sysctl) and inherit. Twingate's default `docker run` snippet hits this — drop the `--sysctl` line when adapting it.
 - **Bubble Tea + alt-screen + copy-paste**: alt-screen mode trashes the scrollback. Default the program to non-alt-screen; require a flag to enable it.
 - **The cluster.yaml `nodes:` list is the source of truth for match_all and best-fit placement.** Murmur does NOT auto-discover Proxmox cluster members. Operators must list every node they want murmur to target, with `address:` (SSH-reachable IP) and `roles:`. If a node is missing from `nodes:`, match_all skips it silently.
+- **Env loader supports inline `#` comments** — but only when whitespace-prefixed. `KEY=value # comment` → `value`; `KEY=value-with-#-no-space` → `value-with-#-no-space` (the `#` is part of the value). Quoted values suppress stripping: `KEY="x # y"` → `x # y`. This was added after an opaque 401 trap where an inline comment leaked into a `PROXMOX_TOKEN_SECRET` value.
+- **The `[x]users` tab uses arrow-keys + Enter, not letter hotkeys.** Letters would collide with the tab bar (a=apps, d=deploy, r=refresh, s=...). When extending the tab, follow the same convention; add new actions to the `userAction` submenu instead of binding new letters.
+- **No role editing — period.** The schema allows it but the UI doesn't expose it. Role changes = delete + re-add. Same goes for self-delete (admin can't escalate-out-of-existence). Don't add an `[e]dit` action without re-litigating the design decision.
+- **Auto-exported starter folders go to `<dirname>-<opname>/`**, not into the admin's repo. The export refuses if the path exists. New operators get a verbatim cluster.yaml + minimal cluster.env + README; they only need to drop in the murmur binary and they're ready to launch.

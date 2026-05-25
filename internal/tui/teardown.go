@@ -50,6 +50,7 @@ type itemResult struct {
 type TeardownView struct {
 	cfg    *config.Config
 	client *proxmox.Client
+	active *config.ActiveUser
 	styles Styles
 
 	// List state.
@@ -86,10 +87,11 @@ type teardownKeyMap struct {
 	NewAgain key.Binding
 }
 
-func NewTeardownView(cfg *config.Config, client *proxmox.Client) *TeardownView {
+func NewTeardownView(cfg *config.Config, client *proxmox.Client, active *config.ActiveUser) *TeardownView {
 	return &TeardownView{
 		cfg:      cfg,
 		client:   client,
+		active:   active,
 		styles:   NewStyles(DefaultTheme),
 		selected: map[int]bool{},
 		keys: teardownKeyMap{
@@ -277,6 +279,7 @@ func (v *TeardownView) startBatch() tea.Cmd {
 	v.msgs = make(chan tea.Msg, 256)
 
 	orch := provision.New(v.cfg, v.client)
+	orch.SetActiveUser(v.active)
 	msgs := v.msgs
 	orch.SetProgress(func(ev provision.ProgressEvent) {
 		select {
@@ -337,6 +340,9 @@ func (v *TeardownView) applyResources(all []proxmox.Resource) {
 		prevVMID = v.rows[v.cursor].VMID
 	}
 
+	// Owner-filter first so deployers only see their own guests; admins and
+	// the fallback path keep the full list. Type filter follows.
+	all = ownerFilter(v.active, all)
 	var filtered []proxmox.Resource
 	for _, r := range all {
 		if r.Type == "qemu" || r.Type == "lxc" {

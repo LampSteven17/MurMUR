@@ -14,12 +14,14 @@ import (
 
 func main() {
 	cfgPath := flag.String("config", "", "path to cluster.yaml (overrides discovery)")
+	asFlag := flag.String("as", "", "select operator by name from cluster.yaml users: (or set MURMUR_USER)")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: murmur [--config PATH] <command>")
+		fmt.Fprintln(os.Stderr, "usage: murmur [--config PATH] [--as NAME] <command>")
 		fmt.Fprintln(os.Stderr, "commands:")
 		fmt.Fprintln(os.Stderr, "  validate    load and validate the cluster config")
 		fmt.Fprintln(os.Stderr, "  status      connect to the cluster and print version + resource summary")
 		fmt.Fprintln(os.Stderr, "  tui         launch the interactive TUI")
+		fmt.Fprintln(os.Stderr, "  whoami      print the resolved operator identity for this invocation")
 	}
 	flag.Parse()
 
@@ -34,18 +36,27 @@ func main() {
 		os.Exit(1)
 	}
 
+	active, err := cfg.ResolveActive(*asFlag)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
+
 	switch flag.Arg(0) {
 	case "validate":
-		fmt.Printf("ok: cluster=%s domain=%s nodes=%d flavors=%d images=%d\n",
+		fmt.Printf("ok: cluster=%s domain=%s nodes=%d flavors=%d images=%d users=%d roles=%d\n",
 			cfg.Cluster.Name, cfg.Cluster.Domain,
-			len(cfg.Cluster.Nodes), len(cfg.Flavors), len(cfg.Images))
+			len(cfg.Cluster.Nodes), len(cfg.Flavors), len(cfg.Images),
+			len(cfg.Users), len(cfg.Roles))
+	case "whoami":
+		cmdWhoami(active)
 	case "status":
-		if err := cmdStatus(cfg); err != nil {
+		if err := cmdStatus(cfg, active); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
 	case "tui":
-		if err := cmdTUI(cfg, resolvedPath); err != nil {
+		if err := cmdTUI(cfg, active, resolvedPath); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
@@ -56,6 +67,22 @@ func main() {
 	}
 }
 
+func cmdWhoami(a *config.ActiveUser) {
+	if a.Fallback {
+		fmt.Printf("operator: <implicit admin via cluster.api.token_id>\n")
+		fmt.Printf("token id: %s\n", a.TokenID)
+		fmt.Printf("role:     admin (builtin, fallback — no users: section)\n")
+		return
+	}
+	fmt.Printf("operator: %s\n", a.Name)
+	fmt.Printf("token id: %s\n", a.TokenID)
+	fmt.Printf("role:     %s\n", a.Role.Name)
+	fmt.Printf("tabs:     %v\n", a.Role.Tabs)
+	fmt.Printf("actions:  %v\n", a.Role.Actions)
+	fmt.Printf("apps:     %v\n", a.Role.Apps)
+	fmt.Printf("guests:   %s\n", a.Role.Guests)
+}
+
 func loadConfig(path string) (string, *config.Config, error) {
 	if path != "" {
 		cfg, err := config.LoadFile(path)
@@ -64,11 +91,11 @@ func loadConfig(path string) (string, *config.Config, error) {
 	return config.Load()
 }
 
-func cmdStatus(cfg *config.Config) error {
+func cmdStatus(cfg *config.Config, active *config.ActiveUser) error {
 	client, err := proxmox.New(proxmox.Config{
 		Endpoint:      cfg.Cluster.API.Endpoint,
-		TokenID:       cfg.Cluster.API.TokenID,
-		TokenSecret:   cfg.Cluster.API.TokenSecret,
+		TokenID:       active.TokenID,
+		TokenSecret:   active.TokenSecret,
 		TLSSkipVerify: cfg.Cluster.API.TLSSkipVerify,
 	})
 	if err != nil {
@@ -116,15 +143,15 @@ func cmdStatus(cfg *config.Config) error {
 	return nil
 }
 
-func cmdTUI(cfg *config.Config, configPath string) error {
+func cmdTUI(cfg *config.Config, active *config.ActiveUser, configPath string) error {
 	client, err := proxmox.New(proxmox.Config{
 		Endpoint:      cfg.Cluster.API.Endpoint,
-		TokenID:       cfg.Cluster.API.TokenID,
-		TokenSecret:   cfg.Cluster.API.TokenSecret,
+		TokenID:       active.TokenID,
+		TokenSecret:   active.TokenSecret,
 		TLSSkipVerify: cfg.Cluster.API.TLSSkipVerify,
 	})
 	if err != nil {
 		return err
 	}
-	return tui.Run(cfg, client, configPath)
+	return tui.Run(cfg, client, active, configPath)
 }

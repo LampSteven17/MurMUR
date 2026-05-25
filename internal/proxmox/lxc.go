@@ -31,6 +31,7 @@ type CreateLXCRequest struct {
 	KeyCtl       bool     // enable keyctl (required by some apps)
 	Description  string
 	Tags         string
+	Pool         string // optional resource pool to place the LXC into
 	Start        bool // start after create
 }
 
@@ -119,6 +120,9 @@ func (c *Client) CreateLXC(ctx context.Context, r CreateLXCRequest) (string, err
 	}
 	if r.Tags != "" {
 		form.Set("tags", r.Tags)
+	}
+	if r.Pool != "" {
+		form.Set("pool", r.Pool)
 	}
 	if r.Start {
 		form.Set("start", "1")

@@ -8,6 +8,61 @@ type Config struct {
 	ReverseProxy    *ReverseProxy    `yaml:"reverse_proxy,omitempty"`
 	Monitoring      *Monitoring      `yaml:"monitoring,omitempty"`
 	StorageBackends []StorageBackend `yaml:"storage_backends"`
+
+	// Users + Roles are optional. When both are empty murmur runs in single-
+	// operator mode (uses cluster.api.token_* directly as an implicit admin),
+	// preserving v0.1 behavior. When either is present, identity resolution
+	// kicks in: --as <name>, $MURMUR_USER, or unambiguous single-user pick.
+	Users []User `yaml:"users,omitempty"`
+	Roles []Role `yaml:"roles,omitempty"`
+}
+
+// User is one operator identity backed by a ProxMox user + token. TokenSecret
+// is resolved lazily from cluster.env: only the active user's secret needs to
+// be defined in the operator's environment, so each operator can ship their
+// own cluster.env without seeing other operators' tokens.
+type User struct {
+	Name         string `yaml:"name"`                    // short identity used by --as / MURMUR_USER
+	Role         string `yaml:"role"`                    // must match one of Config.Roles (after builtin merge)
+	ProxmoxUser  string `yaml:"proxmox_user"`            // "alice@pve" — backing PVE user
+	ProxmoxToken string `yaml:"proxmox_token"`           // token name (bit after `!`)
+	TokenSecret  string `yaml:"token_secret"`            // secret value; ${VAR} resolved at identity selection
+	// SSHPubKey is the operator's OpenSSH public key. When set, guests this
+	// operator deploys trust it (baked into cloud-init / LXC authorized keys)
+	// instead of the on-disk cluster.ssh.identity counterpart. Optional: blank
+	// falls back to cluster.ssh.identity. The matching private key stays on the
+	// operator's own machine and is used for patch/update SSH.
+	SSHPubKey string `yaml:"ssh_pubkey,omitempty"`
+	Comment   string `yaml:"comment,omitempty"`
+}
+
+// FullTokenID returns the ProxMox API token id ("user@realm!tokenname").
+func (u User) FullTokenID() string {
+	return u.ProxmoxUser + "!" + u.ProxmoxToken
+}
+
+// Role bundles the permissions one or more Users are granted murmur-side.
+// PVE ACLs on the underlying token enforce the real perimeter; Role controls
+// TUI affordances + ownership filtering.
+//
+// `*` is a wildcard accepted by Tabs, Actions, and Apps.
+type Role struct {
+	Name    string   `yaml:"name"`
+	Tabs    []string `yaml:"tabs"`    // tab keys visible in the top bar; `[*]` = all
+	Actions []string `yaml:"actions"` // deploy | teardown | patch | host-update | manage-users; `[*]` = all
+	Apps    []string `yaml:"apps"`    // app names from Apps catalog this role can deploy; `[*]` = all
+	Guests  string   `yaml:"guests"`  // "own" (filter list views by murmur-owner tag) | "all"
+}
+
+// Allows reports whether the role grants the given wildcard-allowable item.
+// Empty slice = no access; ["*"] = all; otherwise exact-match.
+func (r Role) Allows(field []string, item string) bool {
+	for _, f := range field {
+		if f == "*" || f == item {
+			return true
+		}
+	}
+	return false
 }
 
 // App is a declarative VM-plus-configuration unit. Pick an app in the [a]apps

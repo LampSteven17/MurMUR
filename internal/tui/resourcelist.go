@@ -32,6 +32,7 @@ const (
 type ResourceListView struct {
 	cfg     *config.Config
 	client  *proxmox.Client
+	active  *config.ActiveUser // owner-filters VM/LXC rows when role.guests == "own"
 	styles  Styles
 	mode    resourceMode
 	label   string // "VMs" | "LXCs" | "templates"
@@ -47,21 +48,23 @@ type ResourceListView struct {
 }
 
 // NewVMsView returns a ResourceListView wired for running/stopped VMs (non-template qemu).
-func NewVMsView(cfg *config.Config, client *proxmox.Client) *ResourceListView {
-	return newResourceList(cfg, client, modeVMs, "VMs", Glyph.VM)
+// active is used to owner-filter the list for "own"-scoped roles (e.g. deployer).
+func NewVMsView(cfg *config.Config, client *proxmox.Client, active *config.ActiveUser) *ResourceListView {
+	return newResourceList(cfg, client, active, modeVMs, "VMs", Glyph.VM)
 }
 
 // NewLXCsView returns a ResourceListView wired for LXCs.
-func NewLXCsView(cfg *config.Config, client *proxmox.Client) *ResourceListView {
-	return newResourceList(cfg, client, modeLXCs, "LXCs", Glyph.LXC)
+func NewLXCsView(cfg *config.Config, client *proxmox.Client, active *config.ActiveUser) *ResourceListView {
+	return newResourceList(cfg, client, active, modeLXCs, "LXCs", Glyph.LXC)
 }
 
-// NewTemplatesView returns a ResourceListView wired for qemu templates.
+// NewTemplatesView returns a ResourceListView wired for qemu templates. Templates
+// are shared base images (not owned), so no active/owner filter is applied.
 func NewTemplatesView(cfg *config.Config, client *proxmox.Client) *ResourceListView {
-	return newResourceList(cfg, client, modeTemplates, "templates", Glyph.VM)
+	return newResourceList(cfg, client, nil, modeTemplates, "templates", Glyph.VM)
 }
 
-func newResourceList(cfg *config.Config, client *proxmox.Client, mode resourceMode, label, glyph string) *ResourceListView {
+func newResourceList(cfg *config.Config, client *proxmox.Client, active *config.ActiveUser, mode resourceMode, label, glyph string) *ResourceListView {
 	styles := NewStyles(DefaultTheme)
 
 	cols := []table.Column{
@@ -101,6 +104,7 @@ func newResourceList(cfg *config.Config, client *proxmox.Client, mode resourceMo
 	return &ResourceListView{
 		cfg:    cfg,
 		client: client,
+		active: active,
 		styles: styles,
 		mode:   mode,
 		label:  label,
@@ -167,6 +171,12 @@ func (v *ResourceListView) applyResources(all []proxmox.Resource) {
 		if v.match(r) {
 			filtered = append(filtered, r)
 		}
+	}
+	// Scope guests to the active operator when their role is "own" (e.g.
+	// deployer sees only what they deployed). Templates are shared base images,
+	// never owner-tagged, so they're exempt — ownerFilter is guest-only.
+	if v.mode == modeVMs || v.mode == modeLXCs {
+		filtered = ownerFilter(v.active, filtered)
 	}
 	sort.Slice(filtered, func(i, j int) bool {
 		return filtered[i].VMID < filtered[j].VMID

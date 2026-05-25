@@ -41,12 +41,47 @@ var builtinSSHUsers = map[string]string{
 	"arch":   "arch",
 }
 
+// TemplatesPoolID is the shared pool murmur drops every template it builds
+// into. Deployers are granted PVETemplateUser on this pool so they can clone
+// templates (and nothing else) — see aclBundleFor. Kept as a const so the
+// add-user ACL grant and the template-build pool assignment can't drift.
+const TemplatesPoolID = "murmur-templates"
+
+// Builtin role catalog. cluster.yaml `roles:` extends and may override these
+// by name. Operators who don't specify roles: get the two defaults below,
+// which match the canonical "admin / deployer" tiers.
+//
+// Tab keys here are the same tokens used in tab keybindings (overview, apps,
+// deploy, teardown, update, patch, users). Action keys are the high-level
+// operations Orchestrator exposes (deploy, teardown, patch, host-update,
+// manage-users). `*` is a wildcard accepted everywhere.
+var builtinRoles = []Role{
+	{
+		Name:    "admin",
+		Tabs:    []string{"*"},
+		Actions: []string{"*"},
+		Apps:    []string{"*"},
+		Guests:  "all",
+	},
+	{
+		Name:    "deployer",
+		Tabs:    []string{"overview", "vms", "lxcs", "nodes", "templates", "apps", "deploy", "teardown", "patch"},
+		Actions: []string{"deploy", "teardown", "patch"},
+		Apps:    []string{"*"},
+		Guests:  "own",
+	},
+}
+
 func mergeFlavors(user []Flavor) []Flavor {
 	return mergeNamed(builtinFlavors, user, func(f Flavor) string { return f.Name })
 }
 
 func mergeImages(user []Image) []Image {
 	return mergeNamed(builtinImages, user, func(i Image) string { return i.Name })
+}
+
+func mergeRoles(user []Role) []Role {
+	return mergeNamed(builtinRoles, user, func(r Role) string { return r.Name })
 }
 
 func mergeSSHUsers(user map[string]string) map[string]string {

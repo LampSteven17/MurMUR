@@ -39,6 +39,7 @@ type deployDoneMsg struct {
 type DeployView struct {
 	cfg    *config.Config
 	client *proxmox.Client
+	active *config.ActiveUser
 	styles Styles
 
 	// Form fields.
@@ -77,7 +78,7 @@ type deployKeyMap struct {
 const cursorSubmit = 5
 
 // NewDeployView wires the form from cluster.yaml flavor/image catalogs + nodes.
-func NewDeployView(cfg *config.Config, client *proxmox.Client) *DeployView {
+func NewDeployView(cfg *config.Config, client *proxmox.Client, active *config.ActiveUser) *DeployView {
 	name := textinput.New()
 	name.Placeholder = "guest-name"
 	name.CharLimit = 63
@@ -99,6 +100,7 @@ func NewDeployView(cfg *config.Config, client *proxmox.Client) *DeployView {
 	v := &DeployView{
 		cfg:        cfg,
 		client:     client,
+		active:     active,
 		styles:     NewStyles(DefaultTheme),
 		name:       name,
 		typeOpts:   []string{"vm", "lxc"},
@@ -284,6 +286,7 @@ func (v *DeployView) startDeploy() tea.Cmd {
 	v.msgs = make(chan tea.Msg, 64)
 
 	orch := provision.New(v.cfg, v.client)
+	orch.SetActiveUser(v.active)
 	msgs := v.msgs
 	orch.SetProgress(func(ev provision.ProgressEvent) {
 		select {

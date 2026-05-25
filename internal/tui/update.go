@@ -48,6 +48,7 @@ type nodeResult struct {
 type UpdateView struct {
 	cfg    *config.Config
 	client *proxmox.Client
+	active *config.ActiveUser
 	styles Styles
 
 	cursor   int
@@ -83,10 +84,11 @@ type updateKeyMap struct {
 	NewAgain  key.Binding
 }
 
-func NewUpdateView(cfg *config.Config, client *proxmox.Client) *UpdateView {
+func NewUpdateView(cfg *config.Config, client *proxmox.Client, active *config.ActiveUser) *UpdateView {
 	return &UpdateView{
 		cfg:      cfg,
 		client:   client,
+		active:   active,
 		styles:   NewStyles(DefaultTheme),
 		selected: map[string]bool{},
 		keys: updateKeyMap{
@@ -265,6 +267,7 @@ func (v *UpdateView) startBatch() tea.Cmd {
 	v.msgs = make(chan tea.Msg, 256)
 
 	orch := provision.New(v.cfg, v.client)
+	orch.SetActiveUser(v.active)
 	msgs := v.msgs
 	orch.SetProgress(func(ev provision.ProgressEvent) {
 		select {

@@ -37,15 +37,17 @@ func skullTickCmd() tea.Cmd {
 // 3D ASCII skull above the MURMUR banner. Any keypress dismisses to overview.
 type WelcomeView struct {
 	cfg        *config.Config
+	active     *config.ActiveUser
 	configPath string
 	styles     Styles
 	frame      int
 	dismissed  bool
 }
 
-func NewWelcomeView(cfg *config.Config, configPath string) *WelcomeView {
+func NewWelcomeView(cfg *config.Config, active *config.ActiveUser, configPath string) *WelcomeView {
 	return &WelcomeView{
 		cfg:        cfg,
+		active:     active,
 		configPath: configPath,
 		styles:     NewStyles(DefaultTheme),
 	}
@@ -80,7 +82,11 @@ func (v *WelcomeView) View(width, height int) string {
 	skull := RenderSkull3D(DefaultTheme, yaw, skull3DCols, skull3DRows)
 
 	laugh := v.renderLaugh()
-	banner := RenderBanner(DefaultTheme, v.cfg.Cluster.Name, v.configPath)
+	who := ""
+	if v.active != nil {
+		who = v.active.Name
+	}
+	banner := RenderBanner(DefaultTheme, v.cfg.Cluster.Name, v.configPath, who)
 	prompt := v.styles.Subtle.Render("press any key to enter")
 
 	// Pad each row of the skull to a fixed width so the stack below doesn't

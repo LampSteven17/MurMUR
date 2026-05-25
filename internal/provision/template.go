@@ -236,8 +236,30 @@ func (o *Orchestrator) buildVMTemplate(ctx context.Context, image config.Image) 
 	if err := o.waitTask(ctx, convertUPID, "convert-template"); err != nil {
 		return 0, "", err
 	}
+	// Drop the template into the shared templates pool so deployers (who hold
+	// PVETemplateUser on that pool, and nothing on the templates otherwise) can
+	// clone it. Non-fatal: an unpooled template still works for admin, but
+	// surface it loudly since deployers won't be able to clone until it's pooled.
+	if err := o.ensureTemplatePooled(ctx, vmid); err != nil {
+		o.emit(StepResolve, "warning: "+err.Error()+" — deployers can't clone this template until it's pooled", 19)
+	}
 	o.emit(StepResolve, fmt.Sprintf("template %q ready (VMID %d on %s)", image.Name, vmid, node), 19)
 	return vmid, node, nil
+}
+
+// ensureTemplatePooled creates the shared templates pool if absent and adds the
+// template VMID to it. Deployers are granted PVETemplateUser on this pool, so
+// pool membership is what lets them clone the template.
+func (o *Orchestrator) ensureTemplatePooled(ctx context.Context, vmid int) error {
+	if err := o.client.CreatePool(ctx, config.TemplatesPoolID, "murmur shared templates — operators clone from here"); err != nil {
+		if !strings.Contains(err.Error(), "already exists") {
+			return fmt.Errorf("ensure %s pool: %w", config.TemplatesPoolID, err)
+		}
+	}
+	if err := o.client.AddPoolMember(ctx, config.TemplatesPoolID, []int{vmid}); err != nil {
+		return fmt.Errorf("add template %d to %s pool: %w", vmid, config.TemplatesPoolID, err)
+	}
+	return nil
 }
 
 // installAgentInTemplate boots the freshly-created template VM once with a

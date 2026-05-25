@@ -59,6 +59,66 @@ cluster:
 
 # --- Optional sections below ---
 
+# Operators (multi-user mode). Each entry binds a murmur identity (the
+# `name`) to a backing ProxMox user + token. cluster.api.token_* is ignored
+# whenever this section is non-empty.
+#
+# Identity at launch is selected in order:
+#   1. --as <name>            (CLI flag)
+#   2. $MURMUR_USER           (env var)
+#   3. single-entry default   (when users: has exactly one entry)
+#   4. credential inference   (the one operator whose token_secret is set in
+#                              cluster.env — since each operator's env holds
+#                              only their own token, that's an unambiguous "me")
+#   5. error                  (lists available names)
+#
+# token_secret is resolved LAZILY: only the active operator's referenced
+# ${VAR} needs to be set in cluster.env. Other operators' tokens stay
+# unresolved in this process so each operator's cluster.env contains only
+# their own secret. Step 4 leans on exactly this: adding operators to the
+# shared cluster.yaml never breaks your no-arg launch, because only your token
+# is present in your env.
+#
+# OMIT this section entirely to keep v0.1 single-operator behavior (the
+# cluster.api.token_* values are used directly as an implicit admin).
+users:
+  - name: alice                                    # short identity used by --as / MURMUR_USER
+    role: deployer                                 # must match a name from roles: (or a builtin)
+    proxmox_user: alice@pve                        # backing PVE user (must exist)
+    proxmox_token: murmur                          # token name; full id is "alice@pve!murmur"
+    token_secret: ${ALICE_TOKEN}                   # resolved at identity-selection time
+    ssh_pubkey: ssh-ed25519 AAAA... alice@laptop   # optional; guests alice deploys trust this key.
+                                                   # Blank → falls back to cluster.ssh.identity. The
+                                                   # matching private key stays on alice's machine.
+    comment: Alice — application deployer
+
+  - name: bob
+    role: admin
+    proxmox_user: bob@pve
+    proxmox_token: murmur
+    token_secret: ${BOB_TOKEN}
+
+# Roles bundle permissions across the TUI. Two builtins ship and are used
+# when this section is absent: admin / deployer. Entries here EXTEND the
+# builtins; a name collision OVERRIDES the builtin.
+#
+#   tabs:    which tab keys the operator sees in the top bar
+#            (overview, apps, deploy, teardown, update, patch, users).
+#            ['*'] = all tabs. Tabs not in the list are hidden.
+#   actions: high-level orchestrator operations gated for this role
+#            (deploy, teardown, patch, host-update, manage-users).
+#            ['*'] = all. Empty = read-only.
+#   apps:    names from the apps: catalog this role can deploy. ['*'] = all,
+#            [] = none.
+#   guests:  "own" → list views filter to murmur-owner=<active-user> tagged
+#            guests. "all" → see everything (admin default).
+roles:
+  - name: lab-only-deployer                        # extends the builtin set
+    tabs:    [overview, apps, deploy, patch]
+    actions: [deploy, patch]
+    apps:    [edge-connector, twingate-connector]  # narrowed catalog
+    guests:  own
+
 # Flavor catalog. Murmur ships a default set; entries here EXTEND it,
 # and a name collision OVERRIDES the builtin.
 flavors:

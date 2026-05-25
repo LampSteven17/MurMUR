@@ -64,6 +64,12 @@ type Request struct {
 	Image  string // image name (cluster.yaml catalog) — used to pick template & default user
 	Flavor string // flavor name (cluster.yaml catalog) — cpu/mem/disk
 
+	// AppName, when set, is the apps: catalog entry this deploy came from.
+	// Stamped on the guest as the `murmur-app-<AppName>` tag so the apps and
+	// patch tabs can match by tag rather than hostname. Empty for raw deploys
+	// from the [d]eploy tab.
+	AppName string
+
 	// TargetNode forces an explicit node. Empty = best-fit placement.
 	TargetNode string
 

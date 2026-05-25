@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -22,6 +23,26 @@ func formBody(v url.Values) io.Reader {
 		return nil
 	}
 	return strings.NewReader(v.Encode())
+}
+
+// FlexInt is an integer that PVE may serialise as either a JSON number or a
+// quoted string — it does this inconsistently across endpoints (e.g. a token's
+// `privsep`/`expire` come back as "0" from the token-create endpoint but as 0
+// elsewhere). UnmarshalJSON accepts both, plus null and "".
+type FlexInt int64
+
+func (n *FlexInt) UnmarshalJSON(b []byte) error {
+	s := strings.Trim(strings.TrimSpace(string(b)), `"`)
+	if s == "" || s == "null" {
+		*n = 0
+		return nil
+	}
+	v, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return fmt.Errorf("proxmox: FlexInt: %q: %w", s, err)
+	}
+	*n = FlexInt(v)
+	return nil
 }
 
 // StrictPercentEncode percent-encodes every byte that is not in PVE's

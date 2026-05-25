@@ -81,6 +81,39 @@ type ComposeContainer struct {
 // For match_all apps, the single-instance fields describe the first
 // matching guest (representative OS/IP for the table); Replicas holds the
 // full per-instance set.
+// resourceCarriesOwner reports whether r's Tags contain murmur-owner-<owner>.
+// PVE normalises tags to semicolons in /cluster/resources output; we tolerate
+// commas/spaces too so callers can be sloppy about separators.
+func resourceCarriesOwner(r *proxmox.Resource, owner string) bool {
+	if r == nil || r.Tags == "" {
+		return false
+	}
+	want := "murmur-owner-" + owner
+	for _, t := range splitOwnerTags(r.Tags) {
+		if t == want {
+			return true
+		}
+	}
+	return false
+}
+
+func splitOwnerTags(s string) []string {
+	out := make([]string, 0, 4)
+	start := 0
+	for i, c := range s {
+		if c == ';' || c == ',' || c == ' ' {
+			if i > start {
+				out = append(out, s[start:i])
+			}
+			start = i + 1
+		}
+	}
+	if start < len(s) {
+		out = append(out, s[start:])
+	}
+	return out
+}
+
 func (o *Orchestrator) InspectApp(ctx context.Context, app config.App) AppRuntimeInfo {
 	info := AppRuntimeInfo{App: app}
 
@@ -89,17 +122,28 @@ func (o *Orchestrator) InspectApp(ctx context.Context, app config.App) AppRuntim
 		info.Err = fmt.Errorf("inspect: list resources: %w", err)
 		return info
 	}
+	// If the active operator's role restricts visibility to their own
+	// guests, drop matches whose tags don't carry murmur-owner-<name>. The
+	// fallback admin path and `guests: all` roles see every replica.
+	wantOwner := ""
+	if o.active != nil && !o.active.Fallback && o.active.Role.Guests == "own" {
+		wantOwner = o.active.Name
+	}
 	var matches []*proxmox.Resource
 	for i := range resources {
 		r := &resources[i]
 		if r.Template == 1 {
 			continue
 		}
-		if r.Name == app.Name {
-			matches = append(matches, r)
-			if !app.MatchAll {
-				break // single-match mode — first hit wins
-			}
+		if r.Name != app.Name {
+			continue
+		}
+		if wantOwner != "" && !resourceCarriesOwner(r, wantOwner) {
+			continue
+		}
+		matches = append(matches, r)
+		if !app.MatchAll {
+			break // single-match mode — first hit wins
 		}
 	}
 	if len(matches) == 0 {
