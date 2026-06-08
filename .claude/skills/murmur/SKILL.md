@@ -43,7 +43,7 @@ Pure docs/yaml/memory edits don't need the build+copy.
 
 ## Architectural principles (load-bearing)
 
-- **Configurable, not hardcoded.** No `prxy-*`, `192.168.x.x`, `example.net`, or any other cluster-specific token in non-fixture code. If a value differs between clusters, it goes in `cluster.yaml`.
+- **Configurable, not hardcoded.** No *real* node hostnames, IP literals, or domains anywhere in code or fixtures — `example.yaml` and code comments use generic placeholders only (`example` / `example.net`, `10.0.0.x`, `pve1`/`pve2`/`pve3`). Real cluster-specific values live in the consumer's `cluster.yaml`, never here. (This is a release boundary, not just style — keep it clean so the repo can ship without leaking a cluster.)
 - **Event-driven TUI, no periodic refresh.** Redraws fire on user input or async-fetch-complete messages — never on a `tea.Tick`. Copy-paste must work in a normal terminal.
 - **Alt-screen is opt-in, off by default.** Inline output is the default for TUI views; alt-screen is a flag for sustained interactive sessions only.
 - **Explicit updates.** No "auto-detected, mysteriously failed to apply." Show diffs, show apply output, fail loudly with the underlying error.
@@ -246,6 +246,8 @@ If a major version bump is required, update one module at a time with a focused 
 - `internal/provision/` — app lifecycle orchestrator (deploy/teardown/host-upgrade/patch)
 - `internal/tui/` — Bubble Tea app, components, views
 - `configs/example.yaml` — canonical reference for the config surface
+- `docs/` — README assets (the `demo.gif` splash + TUI walkthrough); not part of the build
+- `README.md` — public-facing; Quickstart → Why → Features → Configuration
 - `go.mod` / `go.sum` — module + pinned deps
 
 ## Gotchas
