@@ -11,15 +11,15 @@ import (
 type Step int
 
 const (
-	StepPending Step = iota
-	StepResolve   // resolve flavor/image/node (deploy) or look up target (teardown)
-	StepClone     // VM: clone template · LXC: create
-	StepConfigure // hardware + cloud-init (VM) or post-create config (LXC)
-	StepStart     // start guest, wait for status=running
-	StepIP        // wait for guest-agent / network to report IP
-	StepStop        // teardown: stopping a running guest before destroy
-	StepDestroy     // teardown: removing guest + disks
-	StepPostDeploy  // deploy: post-deploy shell command (ansible playbook, etc.)
+	StepPending    Step = iota
+	StepResolve         // resolve flavor/image/node (deploy) or look up target (teardown)
+	StepClone           // VM: clone template · LXC: create
+	StepConfigure       // hardware + cloud-init (VM) or post-create config (LXC)
+	StepStart           // start guest, wait for status=running
+	StepIP              // wait for guest-agent / network to report IP
+	StepStop            // teardown: stopping a running guest before destroy
+	StepDestroy         // teardown: removing guest + disks
+	StepPostDeploy      // deploy: post-deploy shell command (ansible playbook, etc.)
 	StepDone
 )
 
@@ -107,6 +107,12 @@ type Request struct {
 	// exported as an env var to PostDeployCommand. Values are never logged —
 	// progress events refer to them by name only.
 	SecretEnv map[string]string
+
+	// Route is the reverse-proxy description string (App.Route) stamped
+	// verbatim on the new guest. Empty ⇒ the orchestrator falls back to the
+	// cluster-wide ReverseProxy.DescriptionTemplate (with {name}/{app}
+	// substituted) when configured, else stamps no description.
+	Route string
 }
 
 // Result is what Deploy returns on success.

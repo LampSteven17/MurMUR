@@ -71,15 +71,15 @@ type appResult struct {
 
 // AppsView is the apps catalog picker — declarative deploys from cluster.yaml.
 type AppsView struct {
-	cfg        *config.Config
-	client     *proxmox.Client
-	active     *config.ActiveUser
-	styles     Styles
-	configDir  string // dir containing cluster.yaml; WorkDir for post-deploy
+	cfg       *config.Config
+	client    *proxmox.Client
+	active    *config.ActiveUser
+	styles    Styles
+	configDir string // dir containing cluster.yaml; WorkDir for post-deploy
 
 	// picker state
 	cursor   int
-	selected map[string]bool // app name → picked
+	selected map[string]bool    // app name → picked
 	rows     []proxmox.Resource // current cluster guests (for collision detection)
 	loading  bool
 	loaded   bool
@@ -174,7 +174,6 @@ func (v *AppsView) Help() []key.Binding {
 		return []key.Binding{v.keys.Up, v.keys.Down, v.keys.Toggle, v.keys.SelAll, v.keys.ClearAll, v.keys.Confirm}
 	}
 }
-
 
 func (v *AppsView) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch m := msg.(type) {
@@ -534,6 +533,7 @@ func (v *AppsView) startBatch() tea.Cmd {
 				PostDeployRemote:  t.app.PostDeploy != "", // raw shell → run on guest
 				WorkDir:           configDir,
 				SecretEnv:         t.secrets,
+				Route:             t.app.Route, // reverse-proxy hint stamped on the guest description
 			}
 			_, err := orch.Deploy(context.Background(), req)
 			msgs <- appsItemDoneMsg{idx: i, err: err}
@@ -880,7 +880,7 @@ func (v *AppsView) renderConfirm(width int) string {
 	))
 	if totalSecrets > 0 {
 		lines = append(lines, "  "+muted.Render(fmt.Sprintf(
-			"secrets:")) + " " + ink.Render(fmt.Sprintf(
+			"secrets:"))+" "+ink.Render(fmt.Sprintf(
 			"%d total — you'll be prompted next", totalSecrets)))
 	}
 	lines = append(lines, "")

@@ -159,12 +159,20 @@ images:
 #                 post_deploy) and optional `prompt`. Used for things like
 #                 Twingate access/refresh tokens that differ per replica and
 #                 don't belong in cluster.env.
+#   route:        reverse-proxy hint stamped VERBATIM on the guest's PVE
+#                 description at deploy. An external sync tool reads it and
+#                 publishes the route — murmur doesn't run the proxy. The
+#                 string format is whatever that tool parses, e.g.
+#                 "traefik-port:8080" (subdomain = guest name) or
+#                 "traefik:grafana:3000" (explicit subdomain). Omit ⇒ nothing
+#                 stamped (unless reverse_proxy.description_template below).
 apps:
   - name: webapp
     image: debian-13-custom
     flavor: 16vcpu.32gb
     playbook: playbooks/webapp.yml
     update: cd /opt/webapp && docker compose pull && docker compose up -d
+    route: traefik-port:8080   # published at webapp.<domain> -> :8080
 
   - name: static-cache
     image: debian-13
@@ -223,12 +231,15 @@ apps:
         twingate/connector:1
     update: docker pull twingate/connector:1 && docker restart twingate-connector
 
-# Reverse-proxy hint. Murmur stamps this string on the VM description with
-# {port} substituted from the compose file. An external sync (Traefik,
-# Caddy, etc.) reads the description and publishes the route. Omit the
-# section entirely to disable.
+# Cluster-wide fallback for the guest description, applied ONLY to deploys
+# whose app declares no `route:` of its own. Murmur stamps this template on the
+# guest (substituting {name} = guest hostname, {app} = apps: catalog name) and
+# an external sync (Traefik, Caddy, ...) reads the description to publish the
+# route. There is NO {port} placeholder — murmur can't see the guest's
+# listening port (it's in the app's compose file on the guest); put the port in
+# a per-app `route:` instead. Omit this section to stamp nothing by default.
 reverse_proxy:
-  description_template: "traefik-port:{port}"
+  description_template: "traefik:{name}:80"
 
 # Observability URLs. Surfaced in the TUI as links; not required.
 monitoring:

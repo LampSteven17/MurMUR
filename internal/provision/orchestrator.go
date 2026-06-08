@@ -36,8 +36,8 @@ type Orchestrator struct {
 
 func New(cfg *config.Config, client *proxmox.Client) *Orchestrator {
 	return &Orchestrator{
-		cfg:          cfg,
-		client:       client,
+		cfg:      cfg,
+		client:   client,
 		taskPoll: 2 * time.Second,
 		// 10 min covers the first-boot apt-update + qemu-guest-agent install
 		// on cold cloud images, including freshly-released distros with
@@ -69,6 +69,25 @@ func (o *Orchestrator) ownerTagSet(appName string) string {
 		tags = append(tags, "murmur-app-"+appName)
 	}
 	return strings.Join(tags, ",")
+}
+
+// guestDescription returns the reverse-proxy description to stamp on a new
+// guest. Precedence: the per-app Route wins and is stamped verbatim; otherwise
+// the cluster-wide ReverseProxy.DescriptionTemplate is the fallback, with
+// `{name}` (guest hostname) and `{app}` (apps: catalog name) substituted.
+// Empty return ⇒ no description set (today's behavior). murmur only stamps the
+// string; an external sync tool reads it and publishes the route.
+func (o *Orchestrator) guestDescription(req Request) string {
+	if req.Route != "" {
+		return req.Route
+	}
+	if o.cfg.ReverseProxy == nil || o.cfg.ReverseProxy.DescriptionTemplate == "" {
+		return ""
+	}
+	tmpl := o.cfg.ReverseProxy.DescriptionTemplate
+	tmpl = strings.ReplaceAll(tmpl, "{name}", req.Name)
+	tmpl = strings.ReplaceAll(tmpl, "{app}", req.AppName)
+	return tmpl
 }
 
 // ownerPool returns the pool name the active operator's guests land in,
@@ -432,6 +451,7 @@ func (o *Orchestrator) deployVM(ctx context.Context, r resolvedRequest) (*Result
 		Sockets:      1,
 		Memory:       r.flavor.MemoryMB,
 		AgentEnabled: true,
+		Description:  o.guestDescription(r.req),
 		Tags:         o.ownerTagSet(r.req.AppName),
 	}); err != nil {
 		return nil, fmt.Errorf("deploy: configure hardware: %w", err)
@@ -559,21 +579,22 @@ func (o *Orchestrator) deployLXC(ctx context.Context, r resolvedRequest) (*Resul
 	}
 
 	createReq := proxmox.CreateLXCRequest{
-		Node:       targetNode,
-		VMID:       newVMID,
-		OSTemplate: tplVolID,
-		OSType:     r.image.Distro,
-		Hostname:   r.req.Name,
-		Cores:      r.flavor.CPU,
-		Memory:     r.flavor.MemoryMB,
-		Swap:       r.flavor.MemoryMB / 2,
-		DiskSize:   r.flavor.DiskGB,
-		Storage:    storage,
-		Bridge:     bridge,
-		NetIP:      netIP,
-		NetGateway: r.req.Gateway,
-		Tags:       o.ownerTagSet(r.req.AppName),
-		Pool:       pool,
+		Node:        targetNode,
+		VMID:        newVMID,
+		OSTemplate:  tplVolID,
+		OSType:      r.image.Distro,
+		Hostname:    r.req.Name,
+		Cores:       r.flavor.CPU,
+		Memory:      r.flavor.MemoryMB,
+		Swap:        r.flavor.MemoryMB / 2,
+		DiskSize:    r.flavor.DiskGB,
+		Storage:     storage,
+		Bridge:      bridge,
+		NetIP:       netIP,
+		NetGateway:  r.req.Gateway,
+		Description: o.guestDescription(r.req),
+		Tags:        o.ownerTagSet(r.req.AppName),
+		Pool:        pool,
 		// Unprivileged + nesting is the standard "modern app LXC" shape:
 		// safe-by-default isolation plus the feature docker needs to start.
 		// keyctl=1 would also be useful for some apps that touch the

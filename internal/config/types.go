@@ -22,11 +22,11 @@ type Config struct {
 // be defined in the operator's environment, so each operator can ship their
 // own cluster.env without seeing other operators' tokens.
 type User struct {
-	Name         string `yaml:"name"`                    // short identity used by --as / MURMUR_USER
-	Role         string `yaml:"role"`                    // must match one of Config.Roles (after builtin merge)
-	ProxmoxUser  string `yaml:"proxmox_user"`            // "alice@pve" — backing PVE user
-	ProxmoxToken string `yaml:"proxmox_token"`           // token name (bit after `!`)
-	TokenSecret  string `yaml:"token_secret"`            // secret value; ${VAR} resolved at identity selection
+	Name         string `yaml:"name"`          // short identity used by --as / MURMUR_USER
+	Role         string `yaml:"role"`          // must match one of Config.Roles (after builtin merge)
+	ProxmoxUser  string `yaml:"proxmox_user"`  // "alice@pve" — backing PVE user
+	ProxmoxToken string `yaml:"proxmox_token"` // token name (bit after `!`)
+	TokenSecret  string `yaml:"token_secret"`  // secret value; ${VAR} resolved at identity selection
 	// SSHPubKey is the operator's OpenSSH public key. When set, guests this
 	// operator deploys trust it (baked into cloud-init / LXC authorized keys)
 	// instead of the on-disk cluster.ssh.identity counterpart. Optional: blank
@@ -105,6 +105,17 @@ type App struct {
 	// During deploy the [a]apps tab prompts for each secret per target
 	// guest; values are exported as env vars to post_deploy. Never logged.
 	Secrets []AppSecret `yaml:"secrets,omitempty"`
+
+	// Route is a reverse-proxy hint stamped verbatim into the guest's PVE
+	// description at deploy time. An external sync tool (Traefik via a
+	// description-scraping cron, Caddy, etc.) reads the description and
+	// publishes the route — murmur only stamps the string, it never runs the
+	// proxy or interprets the format. Common forms: `traefik-port:8080`
+	// (subdomain derived from the guest name by the sync tool) or
+	// `traefik:grafana:3000` (explicit subdomain). Empty ⇒ nothing stamped,
+	// unless ReverseProxy.DescriptionTemplate is set as a cluster-wide
+	// fallback. Applies to deploy only.
+	Route string `yaml:"route,omitempty"`
 }
 
 // AppSecret is one per-replica secret prompted at deploy time. Name is the
@@ -173,6 +184,13 @@ type Image struct {
 	URL    string `yaml:"url"`
 }
 
+// ReverseProxy is the cluster-wide fallback for the guest description, applied
+// only to deploys whose App declares no explicit Route. DescriptionTemplate is
+// stamped on each such guest with `{name}` (guest hostname) and `{app}` (apps:
+// catalog name, empty for raw deploys) substituted. There is no `{port}`
+// placeholder: murmur does not know the guest's listening port — it lives in
+// the app's compose file on the guest, not in murmur's view — so express ports
+// with a per-app `route:` instead. Omit the section to disable the fallback.
 type ReverseProxy struct {
 	DescriptionTemplate string `yaml:"description_template"`
 }

@@ -160,6 +160,8 @@ The loader's `substituteScalars` would fail loudly on undefined env vars, but th
 
 ProxMox ACLs scoped to `/pool/murmur-<name>` enforce that non-admin deployers literally cannot touch other operators' guests via raw `pvesh`. Tags carry murmur-side metadata for the apps-tab catalog matching.
 
+**Reverse-proxy description** is stamped on the same deploy path but is *not* owner-gated — `guestDescription(req)` (right beside `ownerTagSet`) runs for every deploy. Precedence: the per-app `route:` wins and is stamped **verbatim**; else the cluster-wide `reverse_proxy.description_template` with `{name}`/`{app}` substituted; else empty (no description). VM via `ConfigureVMHardware.Description`, LXC via `CreateLXCRequest.Description`. There is **no `{port}` placeholder** — murmur can't see the guest's listening port (it lives in the on-guest compose file), so ports go in a per-app `route:`. An external sync (Traefik scraper, Caddy, …) reads the description and publishes the route; murmur only stamps the string, never runs the proxy. Stamping happens at create time only — murmur does not reconcile descriptions on existing guests.
+
 ### Role-based TUI filtering (`internal/tui/access.go`)
 
 - `ownerFilter(active, resources)` — filters resource lists by the `murmur-owner-<name>` tag when `role.guests == "own"`; admin's `guests: all` passes through. Wired into the VMs/LXCs, apps, teardown and patch views.
@@ -221,6 +223,7 @@ Only `admin` and `deployer` are builtin. User-defined roles in `cluster.yaml` ar
 | `update_check` | no       | patch             | optional override for the built-in image-digest probe; must print `UPDATES:n/total` |
 | `match_all`    | no       | deploy + patch    | true ⇒ one guest per cluster node. Deploy queues one missing node per invocation; patch fans out. |
 | `secrets`      | no       | deploy            | list of `{name, prompt}` — prompted at deploy time, exported as env to `post_deploy` |
+| `route`        | no       | deploy            | reverse-proxy hint stamped **verbatim** on the guest's PVE description; an external sync (Traefik scraper, Caddy, …) reads it. Murmur doesn't run the proxy or parse the format. Falls back to cluster-wide `reverse_proxy.description_template` ({name}/{app} subst, no {port}) when empty. |
 
 ## Procedure: bump Go dependencies
 
