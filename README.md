@@ -4,23 +4,36 @@
 
 <h1 align="center">murmur</h1>
 
-<p align="center">A configurable TUI + CLI for managing a ProxMox cluster.</p>
+<p align="center">Manage a ProxMox cluster from one config file — CLI + TUI.</p>
+
+<p align="center"><i>Early but usable. The config schema may still change between releases.</i></p>
 
 ---
 
-**Status:** actively developed and usable. The cluster config schema can still
-shift between releases — if you depend on it, pin a commit.
+## Quickstart
+
+```bash
+# build
+go build -o murmur ./cmd/murmur
+
+# configure — copy, then edit with your cluster's values
+cp configs/example.yaml        cluster.yaml    # nodes, storage, network
+cp configs/cluster.env.example cluster.env     # secrets (gitignored)
+
+# run
+./murmur validate   # check the config — no cluster needed
+./murmur tui        # launch the UI
+```
+
+murmur reads `./cluster.yaml`, then `~/.config/murmur/cluster.yaml` (override with `--config`). `cluster.env` lives next to it.
 
 ## Why
 
-ProxMox cluster management tends to be either a web UI (great for one cluster,
-painful for batch work) or hand-rolled bash + tofu + ansible (works once, drifts
-forever). Murmur is a third option: describe your cluster in one YAML file and
-get a typed Go API, a CLI, and a TUI that doesn't fight your terminal.
+Managing a ProxMox cluster usually means clicking through the web UI one node at a time, or gluing together bash, Terraform, and Ansible. murmur does it from one place: describe the cluster once in YAML, then deploy, tear down, patch, and upgrade guests across every node from a CLI and TUI.
 
-It talks to ProxMox over the native API and runs post-deploy steps over its own
-SSH — no Terraform/OpenTofu, no Ansible required (though you can still call an
-ansible playbook if you want one).
+- **Native ProxMox API** — no Terraform/OpenTofu.
+- **Built-in SSH** for post-deploy steps — no Ansible (call a playbook if you want one).
+- **Real multi-operator access** — scoped roles backed by actual ProxMox ACLs, not just hidden UI buttons.
 
 ## Features
 
@@ -43,26 +56,6 @@ ansible playbook if you want one).
   description for an external sync (Traefik scraper, Caddy, …) to publish.
 - **Event-driven TUI, no periodic refresh.** Redraws fire on user input or
   async-fetch-complete messages — never on a tick — so copy-paste just works.
-
-## Quick start
-
-```bash
-go build -o murmur ./cmd/murmur
-
-# Stage your config
-mkdir -p ~/.config/murmur
-cp configs/example.yaml ~/.config/murmur/cluster.yaml
-cp configs/cluster.env.example ~/.config/murmur/cluster.env
-# edit both with your cluster's values
-
-./murmur validate    # load + validate the config (no network)
-./murmur status      # connect, dump version + resource tally + storage check
-./murmur tui         # interactive
-```
-
-Resolution order for `cluster.yaml`: `$MURMUR_CONFIG`, then `./cluster.yaml`,
-then `~/.config/murmur/cluster.yaml`. The matching `cluster.env` (gitignored)
-lives next to it.
 
 ## Configuration
 
