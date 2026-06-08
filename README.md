@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/splash.gif" alt="murmur — animated splash" width="640">
+  <img src="docs/demo.gif" alt="murmur — animated splash and live TUI walkthrough" width="760">
 </p>
 
 <h1 align="center">murmur</h1>
