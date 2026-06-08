@@ -84,7 +84,7 @@ func StrictPercentEncode(s string) string {
 
 // Config configures a Client.
 type Config struct {
-	// Endpoint is the ProxMox server URL, e.g. "https://10.0.0.12:8006".
+	// Endpoint is the ProxMox server URL, e.g. "https://10.0.0.10:8006".
 	// /api2/json is appended automatically.
 	Endpoint string
 
