@@ -11,6 +11,7 @@ import (
 // after the API client connects.
 func (c *Config) Validate() error {
 	var errs []string
+	errs = append(errs, c.validateAgents()...)
 
 	if c.Cluster.Name == "" {
 		errs = append(errs, "cluster.name is required")

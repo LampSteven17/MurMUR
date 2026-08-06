@@ -15,6 +15,10 @@ type Config struct {
 	// kicks in: --as <name>, $MURMUR_USER, or unambiguous single-user pick.
 	Users []User `yaml:"users,omitempty"`
 	Roles []Role `yaml:"roles,omitempty"`
+
+	// Agents is the murmuration rulespace: the autonomous agents allowed to
+	// act on this cluster and the bounds they act within.
+	Agents []Agent `yaml:"agents,omitempty"`
 }
 
 // User is one operator identity backed by a ProxMox user + token. TokenSecret
@@ -208,4 +212,33 @@ type StorageBackend struct {
 	Share    string `yaml:"share"`
 	Username string `yaml:"username,omitempty"`
 	Password string `yaml:"password,omitempty"`
+}
+
+// Agent is one autonomous murmuration agent (a "warden") and its rulespace.
+// Agents that hold cluster credentials bind to a users: entry of the same
+// name (identity + role gates + PVE ACLs); credential-free observers (read
+// observability APIs, write events) need no users: entry at all.
+//
+// Schedules are informational — execution is driven by the host's systemd
+// timers; murmur records the intent here so the rulespace is reviewable in
+// one place.
+type Agent struct {
+	Name  string `yaml:"name"`
+	Role  string `yaml:"role,omitempty"`  // documents the bound role; enforcement is via users:
+	Model string `yaml:"model,omitempty"` // local model id serving this agent (informational)
+
+	Schedule string `yaml:"schedule,omitempty"` // cron-style intent, e.g. "*/30 * * * *"
+
+	// EscalateAfter is how many consecutive anomalous observations an
+	// observer should accumulate before raising severity to escalate.
+	EscalateAfter int `yaml:"escalate_after,omitempty"`
+
+	// UnattendedApps is the explicit allowlist of catalog apps this agent may
+	// update without a human. An app must be listed here AND carry an update:
+	// command in apps: — anything else is escalate-only. Empty = no grants.
+	UnattendedApps []string `yaml:"unattended_apps,omitempty"`
+
+	// UpdateWindow is the local-time window "HH:MM-HH:MM" inside which
+	// unattended updates may run (murmur sweep refuses outside it).
+	UpdateWindow string `yaml:"update_window,omitempty"`
 }

@@ -78,6 +78,11 @@ func Run(ctx context.Context, cfg *config.Config, client *proxmox.Client, active
 		Annotations: readOnly,
 	}, s.appStatus)
 	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "events_query",
+		Description: "Query the murmuration event spine (patrols, findings, updates, audits, escalations, acks). Prefers the console hub (MURMUR_EVENTS_URL), falls back to the local event log. Use this first when responding to an escalation — it is the cluster's recent memory.",
+		Annotations: readOnly,
+	}, s.eventsQuery)
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "guest_power",
 		Description: "Start, shutdown (graceful), stop (hard), or reboot a guest. Requires the operator's role to permit the 'patch' action. Audited. Refuses hard-stop unless shutdown already failed or force=true.",
 		Annotations: mutating,

@@ -30,6 +30,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "  mcp         serve cluster operations as MCP tools over stdio (for AI operators)")
 		fmt.Fprintln(os.Stderr, "  console     serve the self-hosted event console (web UI + event ingest hub)")
 		fmt.Fprintln(os.Stderr, "  emit        append an event to the spine (local file, or hub via MURMUR_EVENTS_URL)")
+		fmt.Fprintln(os.Stderr, "  sweep       one guarded unattended-update pass (agents: rulespace; --dry-run / --agent NAME)")
 		fmt.Fprintln(os.Stderr, "  whoami      print the resolved operator identity for this invocation")
 	}
 	flag.Parse()
@@ -89,6 +90,11 @@ func main() {
 		}
 	case "mcp":
 		if err := cmdMCP(cfg, active); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+	case "sweep":
+		if err := cmdSweep(cfg, active, flag.Args()[1:]); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
