@@ -2,12 +2,17 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"sort"
+	"syscall"
 
 	"github.com/rtx-monster/murmur/internal/config"
+	"github.com/rtx-monster/murmur/internal/console"
+	"github.com/rtx-monster/murmur/internal/events"
 	"github.com/rtx-monster/murmur/internal/mcpserver"
 	"github.com/rtx-monster/murmur/internal/proxmox"
 	"github.com/rtx-monster/murmur/internal/tui"
@@ -23,6 +28,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, "  status      connect to the cluster and print version + resource summary")
 		fmt.Fprintln(os.Stderr, "  tui         launch the interactive TUI")
 		fmt.Fprintln(os.Stderr, "  mcp         serve cluster operations as MCP tools over stdio (for AI operators)")
+		fmt.Fprintln(os.Stderr, "  console     serve the self-hosted event console (web UI + event ingest hub)")
+		fmt.Fprintln(os.Stderr, "  emit        append an event to the spine (local file, or hub via MURMUR_EVENTS_URL)")
 		fmt.Fprintln(os.Stderr, "  whoami      print the resolved operator identity for this invocation")
 	}
 	flag.Parse()
@@ -30,6 +37,24 @@ func main() {
 	if flag.NArg() == 0 {
 		flag.Usage()
 		os.Exit(2)
+	}
+
+	// console and emit are event-spine commands: they run on hosts that have
+	// no cluster.yaml or PVE credentials (the coordinator LXC, warden guests,
+	// ad-hoc scripts), so they are dispatched before config/identity loading.
+	switch flag.Arg(0) {
+	case "console":
+		if err := cmdConsole(flag.Args()[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		return
+	case "emit":
+		if err := cmdEmit(flag.Args()[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	resolvedPath, cfg, err := loadConfig(*cfgPath)
@@ -148,6 +173,60 @@ func cmdStatus(cfg *config.Config, active *config.ActiveUser) error {
 	}
 	fmt.Printf("storage:   all configured IDs present (%v)\n", required)
 	return nil
+}
+
+func cmdConsole(args []string) error {
+	fs := flag.NewFlagSet("console", flag.ExitOnError)
+	listen := fs.String("listen", ":8686", "address to serve the console on")
+	dirFlag := fs.String("events-dir", "", "events directory (default $MURMUR_EVENTS_DIR or ~/.local/state/murmur/events)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	dir := *dirFlag
+	if dir == "" {
+		var err error
+		if dir, err = events.DefaultDir(); err != nil {
+			return err
+		}
+	}
+	srv, err := console.New(dir)
+	if err != nil {
+		return err
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return srv.Run(ctx, *listen)
+}
+
+func cmdEmit(args []string) error {
+	fs := flag.NewFlagSet("emit", flag.ExitOnError)
+	agent := fs.String("agent", "cli", "agent name recorded on the event")
+	severity := fs.String("severity", events.SevInfo, "debug|info|warn|escalate")
+	kind := fs.String("kind", "", "event kind (required), e.g. finding, patrol, update")
+	subject := fs.String("subject", "", "what the event is about (guest, app, node)")
+	message := fs.String("message", "", "human-readable message")
+	payload := fs.String("payload", "", "optional JSON object with structured detail")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	e := events.Event{Agent: *agent, Severity: *severity, Kind: *kind, Subject: *subject, Message: *message}
+	if *payload != "" {
+		if err := json.Unmarshal([]byte(*payload), &e.Payload); err != nil {
+			return fmt.Errorf("--payload is not a JSON object: %w", err)
+		}
+	}
+	if url := os.Getenv("MURMUR_EVENTS_URL"); url != "" {
+		return events.NewHTTPSink(url).Emit(e)
+	}
+	dir, err := events.DefaultDir()
+	if err != nil {
+		return err
+	}
+	sink, err := events.NewFileSink(dir)
+	if err != nil {
+		return err
+	}
+	return sink.Emit(e)
 }
 
 func cmdMCP(cfg *config.Config, active *config.ActiveUser) error {

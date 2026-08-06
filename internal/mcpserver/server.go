@@ -10,6 +10,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/rtx-monster/murmur/internal/config"
+	"github.com/rtx-monster/murmur/internal/events"
 	"github.com/rtx-monster/murmur/internal/provision"
 	"github.com/rtx-monster/murmur/internal/proxmox"
 )
@@ -20,19 +21,25 @@ type Server struct {
 	client *proxmox.Client
 	orch   *provision.Orchestrator
 	active *config.ActiveUser
-	audit  *auditLog
+	local  *events.FileSink // mandatory leg — mutations refuse if unwritable
+	spine  events.Sink      // local + best-effort console hub
 }
 
 // Run serves MCP over stdio until the client disconnects. All logging goes to
 // stderr — stdout carries the JSON-RPC stream.
 func Run(ctx context.Context, cfg *config.Config, client *proxmox.Client, active *config.ActiveUser, version string) error {
-	auditPath, err := AuditPath()
+	dir, err := events.DefaultDir()
 	if err != nil {
 		return err
 	}
-	audit, err := newAuditLog(auditPath)
+	local, err := events.NewFileSink(dir)
 	if err != nil {
 		return err
+	}
+	spine := events.Multi{local}
+	hubURL := os.Getenv("MURMUR_EVENTS_URL")
+	if hubURL != "" {
+		spine = append(spine, events.BestEffort{Sink: events.NewHTTPSink(hubURL)})
 	}
 
 	orch := provision.New(cfg, client)
@@ -42,7 +49,7 @@ func Run(ctx context.Context, cfg *config.Config, client *proxmox.Client, active
 	})
 	log.SetOutput(os.Stderr)
 
-	s := &Server{cfg: cfg, client: client, orch: orch, active: active, audit: audit}
+	s := &Server{cfg: cfg, client: client, orch: orch, active: active, local: local, spine: spine}
 
 	impl := &mcp.Implementation{Name: "murmur", Title: "murmur cluster rails", Version: version}
 	srv := mcp.NewServer(impl, nil)
@@ -81,7 +88,7 @@ func Run(ctx context.Context, cfg *config.Config, client *proxmox.Client, active
 		Annotations: mutating,
 	}, s.appUpdate)
 
-	log.Printf("murmur mcp: operator=%s role=%s audit=%s", operatorName(active), roleName(active), auditPath)
+	log.Printf("murmur mcp: operator=%s role=%s events=%s hub=%s", operatorName(active), roleName(active), dir, orDash(hubURL))
 	return srv.Run(ctx, &mcp.StdioTransport{})
 }
 
@@ -103,26 +110,54 @@ func roleName(a *config.ActiveUser) string {
 
 // ---- guardrail helpers ----------------------------------------------------
 
-// gate enforces role permission + writes the mandatory pre-call audit entry
-// for a mutating tool. Returns an error the model sees verbatim.
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
+}
+
+// auditEvent builds a kind=audit event for a tool invocation.
+func (s *Server) auditEvent(tool, outcome, detail string, args any, severity string) events.Event {
+	return events.Event{
+		Agent:    "mcp:" + operatorName(s.active),
+		Severity: severity,
+		Kind:     events.KindAudit,
+		Subject:  tool,
+		Message:  outcome + ifStr(detail != "", ": "+detail),
+		Payload:  map[string]any{"role": roleName(s.active), "args": args, "outcome": outcome},
+	}
+}
+
+func ifStr(cond bool, s string) string {
+	if cond {
+		return s
+	}
+	return ""
+}
+
+// gate enforces role permission + records the mandatory pre-call audit event
+// for a mutating tool. The LOCAL write is the guarantee: if it fails, the
+// action refuses. Returns an error the model sees verbatim.
 func (s *Server) gate(tool, action string, args any) error {
 	if !actionAllowed(s.active, action) {
-		_ = s.audit.write(auditEntry{Operator: operatorName(s.active), Role: roleName(s.active), Tool: tool, Args: args, Outcome: "denied", Detail: "role lacks action " + action})
+		// Denial performs no action, so an unwritable log only degrades the
+		// record, not safety — emit best-effort and still deny.
+		_ = s.spine.Emit(s.auditEvent(tool, "denied", "role lacks action "+action, args, events.SevWarn))
 		return fmt.Errorf("permission denied: operator %s (role %s) lacks the %q action", operatorName(s.active), roleName(s.active), action)
 	}
-	if err := s.audit.write(auditEntry{Operator: operatorName(s.active), Role: roleName(s.active), Tool: tool, Args: args, Outcome: "allowed"}); err != nil {
-		return fmt.Errorf("refusing to act: audit log unwritable: %w", err)
+	if err := s.spine.Emit(s.auditEvent(tool, "allowed", "", args, events.SevInfo)); err != nil {
+		return fmt.Errorf("refusing to act: event log unwritable: %w", err)
 	}
 	return nil
 }
 
 func (s *Server) auditResult(tool string, args any, callErr error) {
-	e := auditEntry{Operator: operatorName(s.active), Role: roleName(s.active), Tool: tool, Args: args, Outcome: "ok"}
 	if callErr != nil {
-		e.Outcome = "error"
-		e.Detail = callErr.Error()
+		_ = s.spine.Emit(s.auditEvent(tool, "error", callErr.Error(), args, events.SevWarn))
+		return
 	}
-	_ = s.audit.write(e)
+	_ = s.spine.Emit(s.auditEvent(tool, "ok", "", args, events.SevInfo))
 }
 
 // findGuest resolves a guest by name or vmid among qemu/lxc resources

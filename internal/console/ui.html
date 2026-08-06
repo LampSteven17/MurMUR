@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>murmur console</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --line:#21262d; --fg:#c9d1d9; --dim:#8b949e;
+    --info:#58a6ff; --warn:#d29922; --esc:#f85149; --ok:#3fb950; --debug:#6e7681;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--fg);font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  header{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:2}
+  header h1{font-size:16px;font-weight:600;letter-spacing:.06em}
+  header h1 span{color:var(--dim);font-weight:400}
+  #dot{width:9px;height:9px;border-radius:50%;background:var(--dim);flex:none}
+  #dot.live{background:var(--ok)}
+  .chips{display:flex;gap:6px;margin-left:auto}
+  .chip{background:var(--panel);border:1px solid var(--line);color:var(--dim);padding:3px 10px;border-radius:999px;cursor:pointer;font:inherit;font-size:12px}
+  .chip.on{color:var(--fg);border-color:var(--dim)}
+  #q{background:var(--panel);border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:4px 10px;font:inherit;font-size:12px;width:180px}
+  main{max-width:1100px;margin:0 auto;padding:12px 20px 60px}
+  .ev{display:grid;grid-template-columns:170px 76px 1fr auto;gap:10px;padding:7px 10px;border-bottom:1px solid var(--line);align-items:baseline}
+  .ev:hover{background:var(--panel)}
+  .ev.escalate{background:rgba(248,81,73,.07);border-left:3px solid var(--esc)}
+  .ev.escalate.acked{background:transparent;border-left:3px solid var(--ok)}
+  .ts{color:var(--dim);font-size:12px;white-space:nowrap}
+  .sev{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+  .sev.debug{color:var(--debug)} .sev.info{color:var(--info)} .sev.warn{color:var(--warn)} .sev.escalate{color:var(--esc)}
+  .body .agent{color:var(--dim)}
+  .body .kind{color:var(--info)}
+  .body .subject{color:var(--fg);font-weight:600}
+  .body .msg{color:var(--fg)}
+  details{margin-top:4px} summary{color:var(--dim);cursor:pointer;font-size:12px}
+  pre{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px;font-size:12px;overflow-x:auto;margin-top:4px}
+  .ack{background:transparent;border:1px solid var(--esc);color:var(--esc);border-radius:6px;padding:2px 10px;cursor:pointer;font:inherit;font-size:12px}
+  .ack:hover{background:var(--esc);color:var(--bg)}
+  .ackedtag{color:var(--ok);font-size:12px}
+  #empty{color:var(--dim);text-align:center;padding:60px 0}
+</style>
+</head>
+<body>
+<header>
+  <div id="dot" title="stream status"></div>
+  <h1>murmur <span>console</span></h1>
+  <input id="q" placeholder="filter text…">
+  <div class="chips">
+    <button class="chip" data-min="debug">all</button>
+    <button class="chip on" data-min="info">info+</button>
+    <button class="chip" data-min="warn">warn+</button>
+    <button class="chip" data-min="escalate">escalate</button>
+  </div>
+</header>
+<main><div id="list"></div><div id="empty" hidden>no events match</div></main>
+<script>
+"use strict";
+const rank = {debug:0, info:1, warn:2, escalate:3};
+let minSev = "info", textq = "";
+const evs = [];          // newest first
+const acked = new Set(); // event ids with an ack referencing them
+
+const list = document.getElementById("list");
+const empty = document.getElementById("empty");
+
+function fmtTS(ts){
+  const d = new Date(ts);
+  return isNaN(d) ? ts : d.toLocaleString(undefined,{month:"short",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"});
+}
+function esc(s){ return String(s??"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function matches(e){
+  if (rank[e.severity] < rank[minSev]) return false;
+  if (e.kind === "ack") return minSev === "debug"; // acks are bookkeeping noise
+  if (textq){
+    const hay = (e.agent+" "+e.kind+" "+(e.subject||"")+" "+(e.message||"")).toLowerCase();
+    if (!hay.includes(textq)) return false;
+  }
+  return true;
+}
+
+function rowHTML(e){
+  const isEsc = e.severity === "escalate";
+  const isAcked = acked.has(e.id);
+  const payload = e.payload ? `<details><summary>payload</summary><pre>${esc(JSON.stringify(e.payload,null,1))}</pre></details>` : "";
+  const ackUI = isEsc ? (isAcked ? `<span class="ackedtag">✓ acked</span>` : `<button class="ack" data-id="${esc(e.id)}">ack</button>`) : "";
+  return `<div class="ev ${esc(e.severity)}${isAcked?" acked":""}" data-id="${esc(e.id)}">
+    <span class="ts">${esc(fmtTS(e.ts))}</span>
+    <span class="sev ${esc(e.severity)}">${esc(e.severity)}</span>
+    <span class="body"><span class="agent">${esc(e.agent)}</span> · <span class="kind">${esc(e.kind)}</span>${e.subject?` · <span class="subject">${esc(e.subject)}</span>`:""}${e.message?`<br><span class="msg">${esc(e.message)}</span>`:""}${payload}</span>
+    <span>${ackUI}</span>
+  </div>`;
+}
+
+function render(){
+  const shown = evs.filter(matches);
+  list.innerHTML = shown.map(rowHTML).join("");
+  empty.hidden = shown.length > 0;
+}
+
+function ingest(e, rerender=true){
+  if (e.kind === "ack" && e.ref) acked.add(e.ref);
+  evs.unshift(e);
+  if (evs.length > 2000) evs.pop();
+  if (rerender) render();
+}
+
+document.querySelectorAll(".chip").forEach(c => c.onclick = () => {
+  document.querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));
+  c.classList.add("on"); minSev = c.dataset.min; render();
+});
+document.getElementById("q").oninput = e => { textq = e.target.value.trim().toLowerCase(); render(); };
+list.onclick = async e => {
+  const b = e.target.closest(".ack"); if (!b) return;
+  b.disabled = true;
+  await fetch("/api/ack", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ref: b.dataset.id, by: "web"})});
+};
+
+async function load(){
+  const r = await fetch("/api/events?limit=500");
+  const data = await r.json();
+  (data.events||[]).forEach(e => ingest(e, false)); // arrives oldest→newest; unshift reverses
+  render();
+}
+function stream(){
+  const es = new EventSource("/api/stream");
+  const dot = document.getElementById("dot");
+  es.onopen = () => dot.classList.add("live");
+  es.onerror = () => dot.classList.remove("live");
+  es.onmessage = m => { try { ingest(JSON.parse(m.data)); } catch {} };
+}
+load().then(stream);
+</script>
+</body>
+</html>
