@@ -21,9 +21,10 @@ import (
 //go:embed ui.html
 var uiHTML []byte
 
-// Server is the event hub.
+// Server is the event hub, plus an optional live fleet view.
 type Server struct {
-	sink *events.FileSink
+	sink  *events.FileSink
+	fleet *Fleet // nil when the console runs credential-free (no --config)
 
 	mu   sync.Mutex
 	subs map[chan events.Event]struct{}
@@ -37,6 +38,10 @@ func New(eventsDir string) (*Server, error) {
 	return &Server{sink: sink, subs: map[chan events.Event]struct{}{}}, nil
 }
 
+// SetFleet enables the fleet view. Pass a read-only PVE identity — the console
+// renders cluster state and never mutates it.
+func (s *Server) SetFleet(f *Fleet) { s.fleet = f }
+
 // Run serves until ctx is cancelled.
 func (s *Server) Run(ctx context.Context, listen string) error {
 	mux := http.NewServeMux()
@@ -46,6 +51,13 @@ func (s *Server) Run(ctx context.Context, listen string) error {
 	mux.HandleFunc("GET /api/events", s.handleQuery)
 	mux.HandleFunc("GET /api/stream", s.handleStream)
 	mux.HandleFunc("POST /api/ack", s.handleAck)
+	mux.HandleFunc("GET /api/fleet", func(w http.ResponseWriter, r *http.Request) {
+		if s.fleet == nil {
+			http.Error(w, "fleet view disabled: console started without --config", http.StatusNotFound)
+			return
+		}
+		s.fleet.handleFleet(w, r)
+	})
 
 	srv := &http.Server{Addr: listen, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {

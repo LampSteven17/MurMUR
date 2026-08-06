@@ -185,6 +185,7 @@ func cmdConsole(args []string) error {
 	fs := flag.NewFlagSet("console", flag.ExitOnError)
 	listen := fs.String("listen", ":8686", "address to serve the console on")
 	dirFlag := fs.String("events-dir", "", "events directory (default $MURMUR_EVENTS_DIR or ~/.local/state/murmur/events)")
+	cfgFlag := fs.String("config", "", "optional cluster.yaml — enables the live fleet view (use a read-only identity)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -199,6 +200,32 @@ func cmdConsole(args []string) error {
 	if err != nil {
 		return err
 	}
+
+	// Optional fleet view. Without --config the console stays credential-free
+	// and serves events alone; with one it also renders live cluster state
+	// using that identity (which should be read-only).
+	if *cfgFlag != "" {
+		cfg, err := config.LoadFile(*cfgFlag)
+		if err != nil {
+			return fmt.Errorf("fleet view: %w", err)
+		}
+		active, err := cfg.ResolveActive("")
+		if err != nil {
+			return fmt.Errorf("fleet view: %w", err)
+		}
+		client, err := proxmox.New(proxmox.Config{
+			Endpoint:      cfg.Cluster.API.Endpoint,
+			TokenID:       active.TokenID,
+			TokenSecret:   active.TokenSecret,
+			TLSSkipVerify: cfg.Cluster.API.TLSSkipVerify,
+		})
+		if err != nil {
+			return fmt.Errorf("fleet view: %w", err)
+		}
+		srv.SetFleet(console.NewFleet(client, cfg))
+		fmt.Fprintf(os.Stderr, "console: fleet view enabled as %s\n", active.TokenID)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return srv.Run(ctx, *listen)
