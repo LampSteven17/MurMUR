@@ -266,8 +266,12 @@ agents:
     model: lfm2.5-2.6b             # informational: local model serving it
     schedule: "*/30 * * * *"       # informational: systemd timers drive execution
     escalate_after: 2              # consecutive anomalies before escalate
-  - name: warden-updater           # holds a users: identity of the same name
-    role: warden-updater
-    schedule: "0 2 * * *"
-    update_window: "02:00-04:00"   # murmur sweep refuses outside this local-time window
-    unattended_apps: [example-vm]  # explicit allowlist; app must have an update: command
+  # An agent with unattended_apps needs a users: entry of the same name to
+  # act as (e.g. add `- name: warden-updater` under users: with its own PVE
+  # token), a mandatory update_window, and every listed app must carry an
+  # update: command. Uncomment to grant:
+  #- name: warden-updater
+  #  role: deployer
+  #  schedule: "0 2 * * *"
+  #  update_window: "02:00-04:00"  # murmur sweep refuses outside this local-time window
+  #  unattended_apps: [webapp]     # explicit allowlist
