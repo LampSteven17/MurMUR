@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/rtx-monster/murmur/internal/config"
+	"github.com/rtx-monster/murmur/internal/mcpserver"
 	"github.com/rtx-monster/murmur/internal/proxmox"
 	"github.com/rtx-monster/murmur/internal/tui"
 )
@@ -21,6 +22,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "  validate    load and validate the cluster config")
 		fmt.Fprintln(os.Stderr, "  status      connect to the cluster and print version + resource summary")
 		fmt.Fprintln(os.Stderr, "  tui         launch the interactive TUI")
+		fmt.Fprintln(os.Stderr, "  mcp         serve cluster operations as MCP tools over stdio (for AI operators)")
 		fmt.Fprintln(os.Stderr, "  whoami      print the resolved operator identity for this invocation")
 	}
 	flag.Parse()
@@ -57,6 +59,11 @@ func main() {
 		}
 	case "tui":
 		if err := cmdTUI(cfg, active, resolvedPath); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+	case "mcp":
+		if err := cmdMCP(cfg, active); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
@@ -141,6 +148,19 @@ func cmdStatus(cfg *config.Config, active *config.ActiveUser) error {
 	}
 	fmt.Printf("storage:   all configured IDs present (%v)\n", required)
 	return nil
+}
+
+func cmdMCP(cfg *config.Config, active *config.ActiveUser) error {
+	client, err := proxmox.New(proxmox.Config{
+		Endpoint:      cfg.Cluster.API.Endpoint,
+		TokenID:       active.TokenID,
+		TokenSecret:   active.TokenSecret,
+		TLSSkipVerify: cfg.Cluster.API.TLSSkipVerify,
+	})
+	if err != nil {
+		return err
+	}
+	return mcpserver.Run(context.Background(), cfg, client, active, "0.2.0")
 }
 
 func cmdTUI(cfg *config.Config, active *config.ActiveUser, configPath string) error {

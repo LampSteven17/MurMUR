@@ -2,7 +2,9 @@
 
 ## Project
 
-`murmur` is a generic, configurable ProxMox cluster manager (TUI + CLI). Pre-v0.1, private until the shape settles. Reference repo for the lab-specific consumer is `~/TheLightLab` — read it, do not import from it.
+`murmur` puts AI operators on rails for managing ProxMox clusters: a guarded, audited MCP tool surface (`murmur mcp`) over a typed PVE client, with role-scoped operator identities from `cluster.yaml`. The TUI/CLI remain for humans but the MCP surface is the primary direction — long-term goal is autonomous cluster maintenance (background agents that patch, report back, and escalate). Private until the shape settles. Reference repo for the lab-specific consumer is `~/TheLightLab` — read it, do not import from it.
+
+The rails posture: read-only tools for every role; mutating tools gated on role actions and appended to a JSONL audit log (`~/.local/state/murmur/audit.jsonl`, override `MURMUR_AUDIT_LOG`); destructive operations (deploy/teardown) get no MCP tools until they have explicit-confirmation semantics.
 
 See `.claude/skills/murmur/SKILL.md` for the development I/O contract.
 
@@ -11,6 +13,7 @@ See `.claude/skills/murmur/SKILL.md` for the development I/O contract.
 ```bash
 go build -o murmur ./cmd/murmur
 ./murmur --config configs/example.yaml validate
+./murmur --config /path/to/cluster.yaml mcp   # serve MCP over stdio
 ```
 
 Go 1.25.5. No tests required at the v0.1 stage; add them once the surface stabilizes.

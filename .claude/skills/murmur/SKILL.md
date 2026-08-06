@@ -1,6 +1,6 @@
 ---
 name: murmur
-description: Develop the murmur CLI/TUI — extend cluster config schema, ProxMox client, or TUI views. Inputs `cmd/murmur/`, `internal/{config,proxmox,tui}/`, `configs/example.yaml`, `go.mod`. Outputs new packages/fields/views in-repo. Does NOT cover *using* murmur to manage a live cluster (that's the consumer-repo's job, e.g. `/lightlab`). Pre-v0.1 — schema and architecture still moving.
+description: Develop murmur — extend the cluster config schema, ProxMox client, MCP tool surface, or TUI views. Inputs `cmd/murmur/`, `internal/{config,proxmox,provision,mcpserver,tui}/`, `configs/example.yaml`, `go.mod`. Outputs new packages/fields/tools/views in-repo. Does NOT cover *using* murmur to manage a live cluster (that's the consumer-repo's job, e.g. `/lightlab`). Pre-v0.1 — schema and architecture still moving.
 ---
 
 # The Murmur Skill
@@ -11,8 +11,8 @@ Develop the murmur codebase: extend the cluster config schema, the ProxMox API c
 
 | | |
 |---|---|
-| Inputs | `cmd/murmur/`, `internal/config/`, `internal/proxmox/`, `internal/tui/`, `configs/example.yaml`, `go.mod` |
-| Outputs | new packages under `internal/`, new fields in the cluster config Go types + matching `example.yaml` entry, new views under `internal/tui/` |
+| Inputs | `cmd/murmur/`, `internal/config/`, `internal/proxmox/`, `internal/provision/`, `internal/mcpserver/`, `internal/tui/`, `configs/example.yaml`, `go.mod` |
+| Outputs | new packages under `internal/`, new fields in the cluster config Go types + matching `example.yaml` entry, new MCP tools under `internal/mcpserver/`, new views under `internal/tui/` |
 | Manifest | `configs/example.yaml` is the canonical reference for the config surface. Every schema field must appear there with a comment. |
 | Upstream | None — murmur is the root of its own dependency graph. Reference TheLightLab/internal/* as a "we know this shape works" example, but never copy verbatim. |
 | Downstream | Consumer repos (e.g. TheLightLab) provide a `cluster.yaml` and run the binary. |
@@ -27,19 +27,17 @@ This skill stores no state. To read it:
 3. **Go module health:** `go vet ./... && go test ./...`
 4. **Open tasks:** check `TaskList` in the parent project where the work was scoped.
 
-## Build + copy workflow (mandatory after every code change)
+## Build workflow (mandatory after every code change)
 
 After **every** Go change under `~/murmur/`, run:
 
 ```bash
-cd ~/murmur && go build -o murmur ./cmd/murmur && cp murmur ~/TheLightLab/murmur
+cd ~/murmur && go build -o murmur ./cmd/murmur && go vet ./...
 ```
 
-User runs murmur from `~/TheLightLab/` as `./murmur tui` against the real cluster. Skipping the copy means the user runs stale code. The copy is part of "done", not a follow-up step.
+Consumers run the binary from here (e.g. an MCP client configured with `~/murmur/murmur --config <cluster.yaml> mcp`) — there is no copy step. If an MCP client holds the binary open and the build fails with `Text file busy`, build to a temp name and `mv` over it.
 
-If `cp` fails with `Text file busy`, the user has the TUI running — ask them to quit (`q`) before retrying. Don't kill the process for them.
-
-Pure docs/yaml/memory edits don't need the build+copy.
+Pure docs/yaml/memory edits don't need the build.
 
 ## Architectural principles (load-bearing)
 
@@ -244,6 +242,7 @@ If a major version bump is required, update one module at a time with a focused 
 - `internal/config/` — cluster config Go types, YAML loader, validator
 - `internal/proxmox/` — typed ProxMox API client
 - `internal/provision/` — app lifecycle orchestrator (deploy/teardown/host-upgrade/patch)
+- `internal/mcpserver/` — MCP tool surface for AI operators (`murmur mcp`): read tools for every role, role-gated + JSONL-audited mutating tools, no destructive tools without explicit-confirmation semantics. New tools follow the same split — register in `server.go`, handlers in `tools.go`, policy/audit in `rails.go`.
 - `internal/tui/` — Bubble Tea app, components, views
 - `configs/example.yaml` — canonical reference for the config surface
 - `docs/` — README assets (the `demo.gif` splash + TUI walkthrough); not part of the build
