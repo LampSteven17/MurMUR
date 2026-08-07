@@ -56,6 +56,11 @@
   .badge.uncat{border-color:var(--dim)}
   a{color:var(--info);text-decoration:none} a:hover{text-decoration:underline}
   #fleetnote{color:var(--dim);font-size:12px;padding:10px 8px}
+  /* room */
+  #view-room{padding:14px 0}
+  #room{width:100%;max-width:1000px;display:block;margin:0 auto;image-rendering:pixelated;
+        border:1px solid var(--line);border-radius:6px;background:#1b2430}
+  #roomnote{color:var(--dim);font-size:12px;text-align:center;padding:10px}
 </style>
 </head>
 <body>
@@ -65,6 +70,7 @@
   <div class="tabs">
     <button class="tab on" data-view="events">events</button>
     <button class="tab" data-view="fleet">fleet</button>
+    <button class="tab" data-view="room">room</button>
   </div>
   <input id="q" placeholder="filter text…">
   <div class="chips" id="sevchips">
@@ -77,6 +83,10 @@
 <main>
   <div id="view-events"><div id="list"></div><div id="empty" hidden>no events match</div></div>
   <div id="view-fleet" hidden><div id="fleet"></div></div>
+  <div id="view-room" hidden>
+    <canvas id="room" width="400" height="200"></canvas>
+    <div id="roomnote">fred, live — he walks to whatever the event stream says he is working on. rack lights are real guest status.</div>
+  </div>
 </main>
 <script>
 "use strict";
@@ -183,7 +193,16 @@ document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
   document.getElementById("view-fleet").hidden = !isFleet;
   document.getElementById("sevchips").style.display = isFleet ? "none" : "flex";
   document.getElementById("q").style.display = isFleet ? "none" : "block";
+  const isRoom = t.dataset.view === "room";
+  document.getElementById("view-room").hidden = !isRoom;
+  document.getElementById("view-events").hidden = isFleet || isRoom;
+  document.getElementById("sevchips").style.display = (isFleet || isRoom) ? "none" : "flex";
+  document.getElementById("q").style.display = (isFleet || isRoom) ? "none" : "block";
   if (isFleet) loadFleet();   // always refresh on entry; snapshot is server-cached
+  if (isRoom && !window.__roomLoaded) {
+    window.__roomLoaded = true;
+    const sc = document.createElement("script"); sc.src = "/room.js"; document.body.appendChild(sc);
+  }
 });
 
 async function load(){

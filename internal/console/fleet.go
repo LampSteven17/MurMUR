@@ -171,9 +171,14 @@ func (f *Fleet) handleFleet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
+	nodes := make([]string, 0, len(f.cfg.Cluster.Nodes))
+	for _, n := range f.cfg.Cluster.Nodes {
+		nodes = append(nodes, n.Name)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"cluster": f.cfg.Cluster.Name,
+		"nodes":   nodes,
 		"guests":  guests,
 	})
 }

@@ -21,6 +21,9 @@ import (
 //go:embed ui.html
 var uiHTML []byte
 
+//go:embed room.js
+var roomJS []byte
+
 // Server is the event hub, plus an optional live fleet view.
 type Server struct {
 	sink  *events.FileSink
@@ -47,6 +50,10 @@ func (s *Server) Run(ctx context.Context, listen string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", s.handleUI)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprintln(w, "ok") })
+	mux.HandleFunc("GET /room.js", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		_, _ = w.Write(roomJS)
+	})
 	mux.HandleFunc("POST /api/events", s.handleIngest)
 	mux.HandleFunc("GET /api/events", s.handleQuery)
 	mux.HandleFunc("GET /api/stream", s.handleStream)
