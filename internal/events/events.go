@@ -189,15 +189,22 @@ func (m Multi) Emit(e Event) error {
 	return first
 }
 
+// SystemEventsDir is the fallback used when there is no $HOME — the normal
+// case for a systemd service, where agents do most of their work.
+const SystemEventsDir = "/var/lib/murmur/events"
+
 // DefaultDir resolves the local events directory: $MURMUR_EVENTS_DIR, else
-// ~/.local/state/murmur/events.
+// ~/.local/state/murmur/events, else SystemEventsDir.
+//
+// The $HOME-less fallback exists because a systemd unit without an explicit
+// events dir would otherwise fail at startup ("$HOME is not defined") — an
+// agent silently not running is the worst failure mode this system has.
 func DefaultDir() (string, error) {
 	if d := os.Getenv("MURMUR_EVENTS_DIR"); d != "" {
 		return d, nil
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve events dir: %w", err)
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".local", "state", "murmur", "events"), nil
 	}
-	return filepath.Join(home, ".local", "state", "murmur", "events"), nil
+	return SystemEventsDir, nil
 }
