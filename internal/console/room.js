@@ -467,6 +467,7 @@
     fred.asleep = false;
     const msg = (e.message || "").slice(0, 24);
     fred.say = e.severity === "escalate" ? "! " + (e.subject || "problem")
+      : e.kind === "resolved" ? "all clear: " + (e.subject || "")
       : e.kind === "update" ? "updating " + (e.subject || "")
       : e.kind === "backup" ? "checking backups"
       : e.kind === "finding" ? (e.subject ? e.subject + ": " : "") + msg
@@ -509,7 +510,11 @@
       const e = JSON.parse(m.data);
       if (e.kind === "ack") { unacked = Math.max(0, unacked - 1); return; }
       react(e);
-    } catch {}
+    } catch (err) {
+      // Swallowing this kept the stream alive but left Fred frozen with no
+      // signal anywhere — the symptom looked like "he just stopped walking".
+      console.error("room: failed to handle event", err);
+    }
   };
 
   load().then(() => requestAnimationFrame(frame));
