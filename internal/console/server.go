@@ -24,6 +24,12 @@ var uiHTML []byte
 //go:embed room.js
 var roomJS []byte
 
+// Vendored rather than pulled from a CDN: the console has to render on a lab
+// network that may have no route off-site. anime.js v4.5.0, MIT.
+//
+//go:embed anime.umd.min.js
+var animeJS []byte
+
 // Server is the event hub, plus an optional live fleet view.
 type Server struct {
 	sink  *events.FileSink
@@ -53,6 +59,11 @@ func (s *Server) Run(ctx context.Context, listen string) error {
 	mux.HandleFunc("GET /room.js", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 		_, _ = w.Write(roomJS)
+	})
+	mux.HandleFunc("GET /anime.js", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
+		_, _ = w.Write(animeJS)
 	})
 	mux.HandleFunc("POST /api/events", s.handleIngest)
 	mux.HandleFunc("GET /api/events", s.handleQuery)

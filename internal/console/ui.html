@@ -58,8 +58,10 @@
   #fleetnote{color:var(--dim);font-size:12px;padding:10px 8px}
   /* room */
   #view-room{padding:14px 0}
-  #room{width:100%;max-width:1000px;display:block;margin:0 auto;image-rendering:pixelated;
-        border:1px solid var(--line);border-radius:6px;background:#1b2430}
+  /* No width:100% — room.js sets an integer multiple of 240x160. A fractional
+     scale makes art pixels unequal sizes and the whole grid shimmers. */
+  #room{display:block;margin:0 auto;image-rendering:pixelated;
+        border:1px solid var(--line);border-radius:4px;background:#181425}
   #roomnote{color:var(--dim);font-size:12px;text-align:center;padding:10px}
 </style>
 </head>
@@ -84,7 +86,7 @@
   <div id="view-events"><div id="list"></div><div id="empty" hidden>no events match</div></div>
   <div id="view-fleet" hidden><div id="fleet"></div></div>
   <div id="view-room" hidden>
-    <canvas id="room" width="400" height="200"></canvas>
+    <canvas id="room" width="240" height="160"></canvas>
     <div id="roomnote">fred, live — he walks to whatever the event stream says he is working on. rack lights are real guest status.</div>
   </div>
 </main>
@@ -201,7 +203,14 @@ document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
   if (isFleet) loadFleet();   // always refresh on entry; snapshot is server-cached
   if (isRoom && !window.__roomLoaded) {
     window.__roomLoaded = true;
-    const sc = document.createElement("script"); sc.src = "/room.js"; document.body.appendChild(sc);
+    // anime.js first: room.js reads window.anime at init and falls back to
+    // instant moves without it.
+    const lib = document.createElement("script"); lib.src = "/anime.js";
+    lib.onload = lib.onerror = () => {
+      const sc = document.createElement("script"); sc.src = "/room.js";
+      document.body.appendChild(sc);
+    };
+    document.body.appendChild(lib);
   }
 });
 
