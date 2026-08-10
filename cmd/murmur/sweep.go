@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/rtx-monster/murmur/internal/config"
@@ -129,13 +130,57 @@ func cmdSweep(cfg *config.Config, active *config.ActiveUser, args []string) erro
 		break // Guardrail 3: one app per tick.
 	}
 
+	// Apps deliberately kept out of unattended_apps still need someone told when
+	// they fall behind. Nothing probed them before, so "escalate for a human"
+	// meant nothing happened at all and a data-bearing app can sit months
+	// behind in silence. Report, never touch.
+	unattended := map[string]bool{}
+	for _, n := range agent.UnattendedApps {
+		unattended[n] = true
+	}
+	behind := 0
+	var unprobeable []string
+	for _, app := range cfg.Apps {
+		if unattended[app.Name] || app.Update == "" {
+			continue // patched above, or has no update command to run
+		}
+		info := orch.InspectApp(ctx, app)
+		if info.VMID == 0 {
+			continue // catalogued but not deployed — nothing to be behind on
+		}
+		if !info.UpdateChecked {
+			// Collected, not emitted individually. Skipping quietly is how an
+			// app rots unnoticed, but one event per app per night is the alert
+			// fatigue that gets the whole feed ignored instead.
+			unprobeable = append(unprobeable, app.Name)
+			continue
+		}
+		if info.UpdatesAvailable == 0 {
+			continue
+		}
+		behind++
+		emit(events.SevWarn, "update", app.Name,
+			fmt.Sprintf("%d/%d component update(s) available — needs a human, not on the unattended list",
+				info.UpdatesAvailable, info.UpdatesTotal),
+			map[string]any{"vmid": info.VMID, "node": info.Node,
+				"updates_available": info.UpdatesAvailable, "updates_total": info.UpdatesTotal,
+				"unattended": false})
+	}
+
+	if len(unprobeable) > 0 {
+		emit(events.SevInfo, "update", "fleet",
+			fmt.Sprintf("%d deployed app(s) cannot be update-probed, so it is unknown whether they are behind: %s",
+				len(unprobeable), strings.Join(unprobeable, ", ")),
+			map[string]any{"unprobeable": unprobeable})
+	}
+
 	mode := ""
 	if *dryRun {
 		mode = " (dry-run)"
 	}
 	emit(events.SevInfo, "patrol", "update-sweep",
-		fmt.Sprintf("update sweep complete%s: %d app(s) checked, %d updated", mode, checked, updated),
-		map[string]any{"checked": checked, "updated": updated, "dry_run": *dryRun})
+		fmt.Sprintf("update sweep complete%s: %d app(s) checked, %d updated, %d awaiting a human", mode, checked, updated, behind),
+		map[string]any{"checked": checked, "updated": updated, "needs_human": behind, "dry_run": *dryRun})
 	return nil
 }
 

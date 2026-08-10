@@ -601,6 +601,7 @@
     const msg = (e.message || "").slice(0, 24);
     fred.say = e.severity === "escalate" ? "! " + (e.subject || "problem")
       : e.kind === "thinking" ? (msg || "thinking")
+      : e.kind === "reminder" ? "still: " + (e.subject || "")
       : e.kind === "resolved" ? "all clear: " + (e.subject || "")
       : e.kind === "update" ? "updating " + (e.subject || "")
       : e.kind === "backup" ? "checking backups"
@@ -654,7 +655,10 @@
       const evs = d.events || [];
       const acked = new Set(evs.filter(e => e.kind === "ack").map(e => e.ref));
       const live = evs.filter(e => e.severity === "escalate" && !acked.has(e.id));
-      unacked = live.length;
+      // Count distinct subjects, not messages. A long-open escalation is both a
+      // finding and a growing pile of reminders about that same finding, and
+      // "4 to ack" should mean four problems rather than four sentences.
+      unacked = new Set(live.map(e => e.subject)).size;
       // Rebuild from scratch so an ack or an all-clear that happened while this
       // tab was closed actually puts the fire out.
       burning.clear();
