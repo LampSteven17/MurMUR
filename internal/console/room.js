@@ -35,6 +35,10 @@
     bedFrame:"#5a4632", bedTop:"#6f5740", quilt:"#8b9bb4", pillow:"#c0cbdc",
     rug:"#33405e",
     on:"#63c74d", bad:"#e43b44", off:"#2f3854",
+    // The only other saturated colours in the scene, and they get to be loud:
+    // a rack on fire should be the first thing your eye lands on.
+    fCore:"#fff6c2", fHot:"#ffe066", fMid:"#feae34", fEdge:"#e43b44",
+    fDark:"#a02c2c", smoke:"#4a5878",
     hair:"#4a3526", skin:"#eec39a", shirt:"#96603c", pants:"#39405e",
     boot:"#181425", dark:"#141020", txt:"#c0cbdc", dim:"#5a6988",
   };
@@ -233,6 +237,55 @@
     TERMINAL = {x: D.x + 7, y: D.y - 7, w: 12, h: 7};
   }
 
+  // Two octaves of the stable hash: a slow one that makes the flame writhe and a
+  // fast one that makes it crackle. One octave alone either strobes or crawls.
+  function flameHeight(seed, i, w, now) {
+    const slow = hash2(seed + i * 7, Math.floor(now / 110));
+    const fast = hash2(seed + i * 131, Math.floor(now / 55));
+    const taper = 1 - Math.abs((i / Math.max(1, w - 1)) * 2 - 1);   // tallest mid-rack
+    return Math.round((2 + (slow * 0.65 + fast * 0.35) * 11) * (0.3 + taper));
+  }
+
+  function drawFire(x, y, w, now, seed) {
+    for (let i = 0; i < w; i++) {
+      const h = flameHeight(seed, i, w, now);
+      for (let j = 0; j < h; j++) {
+        const f = j / Math.max(1, h);            // 0 at the base, 1 at the tip
+        ctx.fillStyle = f > 0.82 ? C.fDark : f > 0.58 ? C.fEdge
+                      : f > 0.3 ? C.fMid : f > 0.12 ? C.fHot : C.fCore;
+        ctx.fillRect(x + i, y - j, 1, 1);
+      }
+    }
+    // embers and smoke climbing out of the top, wrapping on a long cycle
+    for (let k = 0; k < 5; k++) {
+      const ph = (now / (260 + k * 70) + hash2(seed, k) * 6) % 1;
+      const ex = x + Math.round(hash2(seed + k * 31, Math.floor(now / 900 + k)) * (w - 1));
+      const ey = y - 12 - Math.round(ph * 20);
+      if (ey < 2) continue;
+      ctx.fillStyle = ph < 0.45 ? C.fMid : C.smoke;
+      ctx.fillRect(ex + (ph > 0.6 ? 1 : 0), ey, 1, 1);
+    }
+  }
+
+  function fireGlow(x, y, w, now, seed) {
+    // Elliptical and drawn per scanline: nested rectangles read as a lit box
+    // hanging over the rack, which is exactly how this looked on the first pass.
+    // It also flickers -- a steady glow reads as a lamp, not a fire.
+    const puls = 0.72 + hash2(seed, Math.floor(now / 70)) * 0.55;
+    const cx = x + w / 2, rx = w + 12, ry = 17;
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = "#ff8a3c";
+    for (let dy = -ry; dy <= ry; dy++) {
+      const k = 1 - (dy * dy) / (ry * ry);
+      if (k <= 0) continue;
+      const hw = Math.round(rx * Math.sqrt(k));
+      ctx.globalAlpha = 0.085 * k * k * puls;
+      ctx.fillRect(Math.round(cx - hw), Math.round(y + dy), hw * 2, 1);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+  }
+
   function drawRack(r) {
     const top = r.base - RACK_H, x = r.x;
     ctx.fillStyle = C.rackEdge; ctx.fillRect(x - 1, top - 1, RACK_W + 2, RACK_H + 2);
@@ -242,9 +295,15 @@
     ctx.fillStyle = C.vent;
     for (let s = 0; s < 6; s++) ctx.fillRect(x + 3, top + TOP_H + 1 + s * 3, RACK_W - 7, 2);
     ctx.fillStyle = C.rackEdge; ctx.fillRect(x, r.base - 2, RACK_W, 2);
-    ctx.fillStyle = C.dim; ctx.font = "5px ui-monospace, monospace"; ctx.textAlign = "center";
+    ctx.fillStyle = burning.has(r.node) ? C.fMid : C.dim;
+    ctx.font = "5px ui-monospace, monospace"; ctx.textAlign = "center";
     ctx.fillText(r.node.replace("prxy-", ""), x + RACK_W / 2, top - 2);
     ctx.textAlign = "left";
+    if (burning.has(r.node)) {
+      const seed = r.x * 31 + r.base;
+      drawFire(x, top, RACK_W, nowMs, seed);
+      pendingGlow.push([x, top - 6, RACK_W, seed]);   // additive, after everything
+    }
   }
 
   // --- Fred ----------------------------------------------------------------
@@ -254,6 +313,11 @@
     lastEvent: Date.now(),
   };
   let unacked = 0, tl = null, walking = false;
+  // A rack burns while it has an unacked escalation -- which is what "that
+  // server is on fire" actually means. Cleared by an ack or an all-clear.
+  const burning = new Set();
+  let nowMs = 0;              // current frame time, for the fire's noise
+  const pendingGlow = [];     // fire glows, collected during the sorted pass
 
   function inBunk() { return fred.x < BUNK.x + BUNK.w + 4; }
 
@@ -331,6 +395,8 @@
   function draw(now) {
     if (!bg) paintBackground();
     ctx.drawImage(bg, 0, 0);
+    nowMs = now;
+    pendingGlow.length = 0;
 
     // Distance-driven stride: time-driven frames desync from movement and give
     // you the classic foot-sliding look whenever speed changes.
@@ -360,6 +426,8 @@
       ctx.fillRect(Math.round(fred.x) - 4, Math.round(fred.y) - 1, 9, 2);
       blit(rows, fred.x - 6, fred.y - 18 + bob + work, fred.flip);
     }
+
+    for (const g of pendingGlow) fireGlow(g[0], g[1], g[2], now, g[3]);
 
     // Status lights: a 1px core with 3px/5px additive bloom. Cheapest
     // convincing glow in canvas, and it stays on the pixel grid.
@@ -475,8 +543,13 @@
     fred.sayUntil = performance.now() + 12000;
 
     const r = rackFor(e.subject);
-    if (r) walk(r.x + RACK_W / 2, r.base === ROW_A_Y ? AISLE_MAIN : AISLE_FRONT, () => {});
-    else walk(GAPS[2], AISLE_FRONT, null);
+    if (r) {
+      if (e.severity === "escalate") burning.add(r.node);
+      if (e.kind === "resolved") burning.delete(r.node);
+      walk(r.x + RACK_W / 2, r.base === ROW_A_Y ? AISLE_MAIN : AISLE_FRONT, () => {});
+    } else {
+      walk(GAPS[2], AISLE_FRONT, null);
+    }
   }
 
   async function load() {
@@ -496,7 +569,21 @@
       const d = await (await fetch("/api/events?limit=60")).json();
       const evs = d.events || [];
       const acked = new Set(evs.filter(e => e.kind === "ack").map(e => e.ref));
-      unacked = evs.filter(e => e.severity === "escalate" && !acked.has(e.id)).length;
+      const live = evs.filter(e => e.severity === "escalate" && !acked.has(e.id));
+      unacked = live.length;
+      // Rebuild from scratch so an ack or an all-clear that happened while this
+      // tab was closed actually puts the fire out.
+      burning.clear();
+      const cleared = new Set(evs.filter(e => e.kind === "resolved").map(e => e.subject));
+      for (const e of live) {
+        const r = rackFor(e.subject);
+        if (r && !cleared.has(e.subject)) burning.add(r.node);
+      }
+      // ?fire=<node|any> lights one up on demand, for looking at it.
+      const demo = new URLSearchParams(location.search).get("fire");
+      if (demo && racks.length) {
+        burning.add(racks.find(r => r.node.endsWith(demo))?.node || racks[2 % racks.length].node);
+      }
       const last = [...evs].reverse().find(e => e.kind !== "ack");
       // An hours-old event should find him asleep, not mid-stride.
       if (last && Date.now() - new Date(last.ts).getTime() < 90000) react(last);
@@ -508,7 +595,12 @@
   es.onmessage = m => {
     try {
       const e = JSON.parse(m.data);
-      if (e.kind === "ack") { unacked = Math.max(0, unacked - 1); return; }
+      if (e.kind === "ack") {
+        unacked = Math.max(0, unacked - 1);
+        const r = rackFor(e.subject);
+        if (r) burning.delete(r.node);
+        return;
+      }
       react(e);
     } catch (err) {
       // Swallowing this kept the stream alive but left Fred frozen with no
