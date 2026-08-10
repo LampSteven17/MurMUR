@@ -316,6 +316,8 @@
   // A rack burns while it has an unacked escalation -- which is what "that
   // server is on fire" actually means. Cleared by an ack or an all-clear.
   const burning = new Set();
+  const IDLE_MS = 90000;
+  let goingToBed = false;
   let nowMs = 0;              // current frame time, for the fire's noise
   const pendingGlow = [];     // fire glows, collected during the sorted pass
 
@@ -499,7 +501,23 @@
     if (!running || now - lastT < MIN_DT) return;
     lastT = now;
     if (A) A.engine.update();          // advance tweens exactly once, then draw
-    if (!fred.asleep && !walking && Date.now() - fred.lastEvent > 90000) goSleep();
+
+    // Going to bed is latched rather than gated on !walking: the old form meant
+    // that if a walk ever failed to signal completion -- a cancelled timeline,
+    // or the loop being paused mid-stride while the tab sat on another view --
+    // he stayed on his feet indefinitely with nothing to retry it.
+    const idle = Date.now() - fred.lastEvent;
+    if (!fred.asleep && idle > IDLE_MS) {
+      if (!goingToBed) {
+        goingToBed = true;
+        goSleep();
+      } else if (idle > IDLE_MS * 4) {
+        // Long past due and still upright: stop being clever and put him to bed.
+        if (tl) { tl.cancel(); tl = null; }
+        fred.x = BED.x + 8; fred.y = BED.y + 30;
+        walking = false; fred.working = false; fred.asleep = true;
+      }
+    }
     draw(now);
   }
   if (A) A.engine.useDefaultMainLoop = false;
@@ -542,14 +560,18 @@
       : (msg || "walking the floor");
     fred.sayUntil = performance.now() + 12000;
 
+    goingToBed = false;
     const r = rackFor(e.subject);
     if (r) {
       if (e.severity === "escalate") burning.add(r.node);
       if (e.kind === "resolved") burning.delete(r.node);
       walk(r.x + RACK_W / 2, r.base === ROW_A_Y ? AISLE_MAIN : AISLE_FRONT, () => {});
-    } else {
-      walk(GAPS[2], AISLE_FRONT, null);
     }
+    // Cluster-scope events ("patrol pass complete" ends every single pass) name
+    // no rack. Sending him to a fixed spot for those parked him in the dead
+    // centre of the room after every patrol, which is where he was found
+    // standing. He says his line from wherever he is and the idle timer takes
+    // him home.
   }
 
   async function load() {
