@@ -75,6 +75,28 @@
     up:   ["..PPP..PPP..", ".PPP....PPP.", ".bb......bb.", ".bb......bb."],
     side: ["..PPPP......", ".PPPPP......", ".bb..bb.....", ".bb..bb....."],
   };
+  // Seated at the terminal, seen from behind, hands out on the desk. Two frames
+  // that differ only in the arms -- at 12px wide that reads as typing.
+  const SIT = [
+    ["....hhhh....", "..hhhhhhhh..", "..hhhhhhhh..", "..hhhhhhhh..",
+     "...hhhhhh...", "..kCCCCCCk..", ".kCCCCCCCCk.", ".sCCCCCCCCs.",
+     ".sCCCCCCCCs.", "..CCCCCCCC..", "..PPPPPPPP..", "..PPP..PPP.."],
+    ["....hhhh....", "..hhhhhhhh..", "..hhhhhhhh..", "..hhhhhhhh..",
+     "...hhhhhh...", "..kCCCCCCk..", ".kCCCCCCCCk.", "s.CCCCCCCC.s",
+     ".sCCCCCCCCs.", "..CCCCCCCC..", "..PPPPPPPP..", "..PPP..PPP.."],
+  ];
+  // Crouched at a rack with an arm raised to a slot. Read at a glance as
+  // "he is doing something to that machine" rather than merely standing by it.
+  const INSPECT = [
+    ["............", "....hhhh....", "..hhhhhhhh..", "..hhhhhhhh..",
+     "..hhhhhhhh..", "...hhhhhh...", "..kCCCCCCk..", ".sCCCCCCCCk.",
+     ".sCCCCCCCCs.", "..CCCCCCCC..", "..PPPPPPPP..", "..PPP..PPP..",
+     "..bb....bb..", "..bb....bb.."],
+    ["....s.......", "....hhhh....", "..hhhhhhhh..", "..hhhhhhhh..",
+     "..hhhhhhhh..", "...hhhhhh...", "..kCCCCCCk..", "..CCCCCCCCk.",
+     ".sCCCCCCCCs.", "..CCCCCCCC..", "..PPPPPPPP..", "..PPP..PPP..",
+     "..bb....bb..", "..bb....bb.."],
+  ];
   // Asleep is a dedicated pose, never a rotated walk frame. 20x9, head at left.
   const SLEEP = [
     ".....hhhh...........", "....hssssh..........", "....hs--sh..........",
@@ -307,11 +329,15 @@
   }
 
   // --- Fred ----------------------------------------------------------------
+  // What he is doing, not just where he is: "sleep" | "walk" | "inspect" |
+  // "type" | "fight". The activity survives arrival, so he keeps doing the thing
+  // until something else happens or the idle timer sends him to bed.
   const fred = {
     x: BED.x + 8, y: BED.y + 30, dir: "down", flip: false,
-    dist: 0, asleep: true, working: false, say: "", sayUntil: 0,
+    dist: 0, asleep: true, activity: "sleep", say: "", sayUntil: 0,
     lastEvent: Date.now(),
   };
+  const DESK_SEAT = {x: BUNK.x + 24, y: BUNK.y + 92};   // chair, below the terminal
   let unacked = 0, tl = null, walking = false;
   // A rack burns while it has an unacked escalation -- which is what "that
   // server is on fire" actually means. Cleared by an ack or an all-clear.
@@ -359,7 +385,7 @@
     const pts = pathTo(tx, ty);
     if (!A) {
       fred.x = tx; fred.y = ty; walking = false;
-      fred.working = !!onArrive; onArrive && onArrive();
+      onArrive && onArrive();
       return;
     }
     walking = true;
@@ -379,7 +405,6 @@
     }
     tl.call(() => {
       walking = false;
-      fred.working = !!onArrive;
       if (onArrive) onArrive();
     });
   }
@@ -387,7 +412,7 @@
   function goSleep() {
     fred.say = "";
     walk(BED.x + 8, BED.y + 30, null);
-    if (tl) tl.call(() => { fred.asleep = true; fred.working = false; });
+    if (tl) tl.call(() => { fred.asleep = true; fred.activity = "sleep"; });
     else { fred.asleep = true; }
   }
 
@@ -420,13 +445,24 @@
         blit(SLEEP, BED.x + 4, BED.y + 14 + rise, false);
         continue;
       }
-      const key = (fred.dir === "left" || fred.dir === "right") ? "side" : fred.dir;
-      const rows = apart ? SPR[key].slice(0, 14).concat(LEGS_APART[key]) : SPR[key];
-      const bob = apart ? -1 : 0;
-      const work = fred.working && !walking ? (Math.floor(now / 200) % 2 ? -1 : 0) : 0;
       ctx.fillStyle = "rgba(15,15,24,.45)";
       ctx.fillRect(Math.round(fred.x) - 4, Math.round(fred.y) - 1, 9, 2);
-      blit(rows, fred.x - 6, fred.y - 18 + bob + work, fred.flip);
+
+      // Standing still is the least informative thing he can do, so every
+      // arrival hands off to a pose that says what he is actually doing.
+      if (!walking && fred.activity === "type") {
+        blit(SIT[Math.floor(now / 190) % 2], fred.x - 6, fred.y - 12, false);
+      } else if (!walking && fred.activity === "inspect") {
+        blit(INSPECT[Math.floor(now / 260) % 2], fred.x - 6, fred.y - 14, false);
+      } else if (!walking && fred.activity === "fight") {
+        // Frantic: same pose, much faster, and he shuffles on the spot.
+        const j = Math.floor(now / 90) % 2;
+        blit(INSPECT[j], fred.x - 6 + (j ? 1 : -1), fred.y - 14, false);
+      } else {
+        const key = (fred.dir === "left" || fred.dir === "right") ? "side" : fred.dir;
+        const rows = apart ? SPR[key].slice(0, 14).concat(LEGS_APART[key]) : SPR[key];
+        blit(rows, fred.x - 6, fred.y - 18 + (apart ? -1 : 0), fred.flip);
+      }
     }
 
     for (const g of pendingGlow) fireGlow(g[0], g[1], g[2], now, g[3]);
@@ -454,11 +490,22 @@
 
     // the bunk terminal, always on
     if (TERMINAL) {
-      const t = TERMINAL, flick = (Math.floor(now / 140) % 5) === 0;
-      ctx.fillStyle = flick ? "#3a5878" : "#2f4a6a";
+      const t = TERMINAL, busy = fred.activity === "type" && !walking;
+      // Idling it just flickers; while he is actually working it scrolls lines,
+      // so the screen tells you the same thing his pose does from across the room.
+      ctx.fillStyle = (Math.floor(now / 140) % 5) === 0 ? "#3a5878" : "#2f4a6a";
       ctx.fillRect(t.x, t.y, t.w, t.h);
-      ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = .12;
-      ctx.fillStyle = "#4a7ab0"; ctx.fillRect(t.x - 3, t.y - 3, t.w + 6, t.h + 6);
+      if (busy) {
+        for (let i = 0; i < 4; i++) {
+          const row = (i + Math.floor(now / 220)) % 5;
+          const len = 2 + Math.floor(hash2(i * 13, Math.floor(now / 220)) * (t.w - 4));
+          ctx.fillStyle = i === 0 ? "#a8e6a0" : "#63c74d";
+          ctx.fillRect(t.x + 1, t.y + 1 + row, len, 1);
+        }
+      }
+      ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = busy ? .22 : .12;
+      ctx.fillStyle = busy ? "#63c74d" : "#4a7ab0";
+      ctx.fillRect(t.x - 3, t.y - 3, t.w + 6, t.h + 6);
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
     }
 
@@ -515,7 +562,7 @@
         // Long past due and still upright: stop being clever and put him to bed.
         if (tl) { tl.cancel(); tl = null; }
         fred.x = BED.x + 8; fred.y = BED.y + 30;
-        walking = false; fred.working = false; fred.asleep = true;
+        walking = false; fred.asleep = true; fred.activity = "sleep";
       }
     }
     draw(now);
@@ -553,6 +600,7 @@
     fred.asleep = false;
     const msg = (e.message || "").slice(0, 24);
     fred.say = e.severity === "escalate" ? "! " + (e.subject || "problem")
+      : e.kind === "thinking" ? (msg || "thinking")
       : e.kind === "resolved" ? "all clear: " + (e.subject || "")
       : e.kind === "update" ? "updating " + (e.subject || "")
       : e.kind === "backup" ? "checking backups"
@@ -561,11 +609,25 @@
     fred.sayUntil = performance.now() + 12000;
 
     goingToBed = false;
+
+    // "thinking" is the warden telling us inference has started. It is the one
+    // slow thing this agent does, and it belongs at the desk, not at a rack.
+    if (e.kind === "thinking") {
+      fred.activity = "walk";
+      walk(DESK_SEAT.x, DESK_SEAT.y, () => { fred.activity = "type"; });
+      return;
+    }
+
     const r = rackFor(e.subject);
     if (r) {
       if (e.severity === "escalate") burning.add(r.node);
       if (e.kind === "resolved") burning.delete(r.node);
-      walk(r.x + RACK_W / 2, r.base === ROW_A_Y ? AISLE_MAIN : AISLE_FRONT, () => {});
+      const next = burning.has(r.node) ? "fight"
+                 : (e.kind === "update" || e.kind === "backup") ? "inspect"
+                 : e.kind === "resolved" ? "idle" : "inspect";
+      fred.activity = "walk";
+      walk(r.x + RACK_W / 2, r.base === ROW_A_Y ? AISLE_MAIN : AISLE_FRONT,
+           () => { fred.activity = next; });
     }
     // Cluster-scope events ("patrol pass complete" ends every single pass) name
     // no rack. Sending him to a fixed spot for those parked him in the dead
