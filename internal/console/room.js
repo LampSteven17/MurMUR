@@ -579,11 +579,6 @@
         const r = rackFor(e.subject);
         if (r && !cleared.has(e.subject)) burning.add(r.node);
       }
-      // ?fire=<node|any> lights one up on demand, for looking at it.
-      const demo = new URLSearchParams(location.search).get("fire");
-      if (demo && racks.length) {
-        burning.add(racks.find(r => r.node.endsWith(demo))?.node || racks[2 % racks.length].node);
-      }
       const last = [...evs].reverse().find(e => e.kind !== "ack");
       // An hours-old event should find him asleep, not mid-stride.
       if (last && Date.now() - new Date(last.ts).getTime() < 90000) react(last);
