@@ -58,6 +58,11 @@ func (s *Server) Run(ctx context.Context, listen string) error {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprintln(w, "ok") })
 	mux.HandleFunc("GET /room.js", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		// Without this the browser picks a heuristic freshness lifetime and an
+		// already-open dashboard keeps running whatever room.js it first saw --
+		// a deployed fix simply never arrives. no-cache still allows a 304, it
+		// only forbids reusing the copy without asking.
+		w.Header().Set("Cache-Control", "no-cache")
 		_, _ = w.Write(roomJS)
 	})
 	mux.HandleFunc("GET /anime.js", func(w http.ResponseWriter, _ *http.Request) {
@@ -97,6 +102,7 @@ func (s *Server) handleUI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
 	_, _ = w.Write(uiHTML)
 }
 
