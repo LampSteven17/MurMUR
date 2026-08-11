@@ -1093,9 +1093,16 @@
     // Clouds drift; it is the only ambient motion in fair weather and does more
     // for "alive" than anything else. Whole pixels only.
     if (kind !== "clear") {
-      const windMul = 1 + ((weather && weather.wind_kph) || 0) / 25;
+      // rate is MILLISECONDS PER PIXEL, so a bigger number is a slower cloud.
+      // These were 15-34, which is ~100px/s -- a cloud crossed the window in
+      // about a second. Now the nearest band takes ~40s to cross and the
+      // highest ~75s, which is roughly what weather does. Wind still speeds it
+      // up, but from a gentler divisor and capped, so a gale scuds rather than
+      // teleports.
+      const windMul = Math.min(2.2, 1 + ((weather && weather.wind_kph) || 0) / 50);
       ctx.fillStyle = kind === "fog" ? "#c7dcd0" : night ? "#3a4466" : C.cloud;
-      for (const [oy, cw, rate] of [[4, 22, 26], [11, 28, 15], [19, 18, 34]]) {
+      // Nearer bands (larger oy) move faster: that is the parallax.
+      for (const [oy, cw, rate] of [[4, 22, 580], [11, 28, 430], [19, 18, 310]]) {
         const drift = Math.floor(now / (rate / windMul)) % (WINDOW.w + 34);
         for (let i = 0; i < cw; i++) {
           const px = WINDOW.x + ((i + drift) % (WINDOW.w + 34)) - 17;
