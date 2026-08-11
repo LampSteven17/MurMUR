@@ -98,6 +98,13 @@ type App struct {
 	// runs a generic docker compose digest check against /opt/<name>/.
 	UpdateCheck string `yaml:"update_check,omitempty"`
 
+	// ConfirmAfterUpdate escalates once an unattended update SUCCEEDS, asking a
+	// human to confirm the app is genuinely healthy. For something like the
+	// reverse proxy, "the container started and a route answered" is the most a
+	// machine can honestly assert — whether the lab actually works is a
+	// judgement only the operator can make. The escalation is the question.
+	ConfirmAfterUpdate bool `yaml:"confirm_after_update,omitempty"`
+
 	// MatchAll: when true, patch/inspect fans out across every guest whose
 	// name matches App.Name (rather than expecting exactly one). Used for
 	// replicated services like twingate-connector that run one instance per

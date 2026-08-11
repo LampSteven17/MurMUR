@@ -126,6 +126,12 @@ func cmdSweep(cfg *config.Config, active *config.ActiveUser, args []string) erro
 		}
 		emit(events.SevInfo, "update", appName,
 			fmt.Sprintf("unattended update OK: compose running %d→%d", preRunning, postRunning), payload)
+		if app.ConfirmAfterUpdate {
+			// Deliberately an escalation on SUCCESS. Everything a machine can
+			// check has passed; this asks the one question it cannot answer.
+			emit(events.SevEscalate, "update", appName,
+				"updated and self-checks passed — please confirm everything still works", payload)
+		}
 		updated++
 		break // Guardrail 3: one app per tick.
 	}
