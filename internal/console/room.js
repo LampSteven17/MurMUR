@@ -75,50 +75,56 @@
   // Two leg positions per direction. The stride is carried by swapping the legs
   // AND lifting the whole sprite 1px — animating legs alone reads as shuffling.
   const SPR = {
+    // 18x27. Every row is exactly 18 characters and the face is built on a
+    // single centre line between columns 8 and 9 -- the previous head had its
+    // eyes a pixel left of centre, which is why he looked wrong rather than
+    // stylised. Eyes are 2x2 with a brow above; anything larger reads as bulging.
     down: [
       "......hhhhhh......","....hhhhhhhhhh....","...thhhhhhhhhhH...","..thhhhhhhhhhhhH..",
-      "..thhSSSSSSSShhH..","..hSSSSSSSSSSssH..","..hSSEESSSSEESsH..","..hSSEESSSSEESsH..",
-      "..hSSSSSSSSSSssH..","..hSSSSddddSSssH..","...hSSSSSSSSssH...","......SSSSss......",
-      "...kLCCCCCCCCck...","..kLCCCCCCCCCCck..","..SLCCCCCCCCCCcd..","..SLCCCCCCCCCCcd..",
-      "..SLCCCCCCCCCCcd..","..kLCCCCCCCCCCck..","...LCCCCCCCCCCc...","...LCCCCCCCCCCc...",
-      "...PPPPPPPPPPpp...","...PPPPPPPPPPpp...","...PPPPP..PPPpp...","...PPPPP..PPPpp...",
-      "...PPPP....PPpp...","...bbbb....bbbb...","...bbbb....bbbb...",
+      "..thhSSSSSSSShhH..","..thSSSSSSSSSShH..","..thSSSSSSSSSShH..","..thSSEESSEESShH..",
+      "..thSSEESSEESShH..","..thSSSSSSSSSShH..","..thSSSSddSSSShH..","...hSSSSSSSSSSh...",
+      "......SSSSSS......","...kCCCCCCCCCCk...","..kLCCCCCCCCCCck..","..SLCCCCCCCCCCcd..",
+      "..SLCCCCCCCCCCcd..","..SLCCCCCCCCCCcd..","..kLCCCCCCCCCCck..","...LCCCCCCCCCCc...",
+      "...LCCCCCCCCCCc...","...PPPPPPPPPPPP...","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
+      "...PPPPP..PPPPP...","...bbbb....bbbb...","...bbbb....bbbb...",
     ],
     up: [
       "......hhhhhh......","....hhhhhhhhhh....","...thhhhhhhhhhH...","..thhhhhhhhhhhhH..",
       "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..",
-      "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","...hhhhhhhhhhhH...","......hhhhhh......",
-      "...kLCCCCCCCCck...","..kLCCCCCCCCCCck..","..SLCCCCCCCCCCcd..","..SLCCCCCCCCCCcd..",
-      "..SLCCCCCCCCCCcd..","..kLCCCCCCCCCCck..","...LCCCCCCCCCCc...","...LCCCCCCCCCCc...",
-      "...PPPPPPPPPPpp...","...PPPPPPPPPPpp...","...PPPPP..PPPpp...","...PPPPP..PPPpp...",
-      "...PPPP....PPpp...","...bbbb....bbbb...","...bbbb....bbbb...",
+      "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","...hhhhhhhhhhhh...",
+      "......SSSSSS......","...kCCCCCCCCCCk...","..kLCCCCCCCCCCck..","..SLCCCCCCCCCCcd..",
+      "..SLCCCCCCCCCCcd..","..SLCCCCCCCCCCcd..","..kLCCCCCCCCCCck..","...LCCCCCCCCCCc...",
+      "...LCCCCCCCCCCc...","...PPPPPPPPPPPP...","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
+      "...PPPPP..PPPPP...","...bbbb....bbbb...","...bbbb....bbbb...",
     ],
+    // Profile: the head is narrower, the far arm is hidden, and one eye sits
+    // forward of centre. Drawn facing right; left is the mirror.
     side: [
-      ".....hhhhhh.......","...hhhhhhhhhh.....","..thhhhhhhhhhH....",".thhhhhhhhhhhhH...",
-      ".thhhSSSSSSSSh....",".thhSSSSSSSSSs....",".thhSSEESSSSs.....",".thhSSEESSSSs.....",
-      ".thhSSSSSSSSs.....",".thhSSSSddSSs.....","..hhSSSSSSSs......",".....SSSSss.......",
-      "...kLCCCCCCck.....","..kLCCCCCCCCck....","..SLCCCCCCCCCd....","..SLCCCCCCCCCd....",
-      "..SLCCCCCCCCcd....","..kLCCCCCCCCck....","...LCCCCCCCCc.....","...LCCCCCCCCc.....",
-      "...PPPPPPPPp......","...PPPPPPPPp......","...PPPPPPpp.......","...PPPPPPpp.......",
-      "...PPPPPpp........","...bbbbbb.........","...bbbbbb.........",
+      ".....hhhhhh.......","...hhhhhhhhhh.....","..thhhhhhhhhhH....","..thhhhhhhhhhhH...",
+      "..thhSSSSSSSSh....","..thSSSSSSSSSS....","..thSSSSSSSSSS....","..thSSSSEESSS.....",
+      "..thSSSSEESSS.....","..thSSSSSSSSS.....","..thSSSSSddSS.....","...hSSSSSSSS......",
+      ".....SSSSS........","...kCCCCCCCCk.....","..kLCCCCCCCCCk....","..SLCCCCCCCCCd....",
+      "..SLCCCCCCCCCd....","..SLCCCCCCCCCd....","..kLCCCCCCCCCk....","...LCCCCCCCCc.....",
+      "...LCCCCCCCCc.....","...PPPPPPPPPP.....","...PPPPPPPPPP.....","...PPPPP..PPP.....",
+      "...PPPPP..PPP.....","...bbbb...bbb.....","...bbbb...bbb.....",
     ],
   };
   // Legs apart: the final six rows swap, and the whole sprite lifts 1px. Moving
   // legs alone reads as a shuffle; lifting the body is what reads as a stride.
   const LEGS_APART = {
-    down: ["...PPPPP..PPPpp...","..PPPPP....PPPpp..","..PPPP......PPpp..",
-           "..bbbb......bbbb..","..bbbb......bbbb..","..................",],
-    up:   ["...PPPPP..PPPpp...","..PPPPP....PPPpp..","..PPPP......PPpp..",
-           "..bbbb......bbbb..","..bbbb......bbbb..","..................",],
-    side: ["...PPPPPPpp.......","..PPPPPPpp........","..PPPPpp..........",
-           "..bbbb...bbb......","..bbbb...bbb......","..................",],
+    down: ["...PPPPPPPPPPPP...","..PPPPP......PPPP.","..PPPP........PPP.",
+           "..bbbb........bbbb","..bbbb........bbbb","..................",],
+    up:   ["...PPPPPPPPPPPP...","..PPPPP......PPPP.","..PPPP........PPP.",
+           "..bbbb........bbbb","..bbbb........bbbb","..................",],
+    side: ["...PPPPPPPPPP.....","..PPPPP...PPPP....","..PPPP.....PPP....",
+           "..bbbb.....bbb....","..bbbb.....bbb....","..................",],
   };
   // Asleep: a dedicated pose, lying under the quilt with the head on the pillow.
   // 30x14, head at the left, and the quilt line does the work of a body.
   const SLEEP = [
     "........hhhhhh................","......hhhhhhhhhh..............",
     ".....thhSSSSSShH..............",".....thSSSSSSSSH..............",
-    ".....thSS--SS-SH..............",".....thSSSSSSSSH..............",
+    ".....thSS-SS-SSH..............",".....thSSSSSSSSH..............",
     "......hSSSSSSH................","......QQQQQQQQQQQQQQQQQQQQ....",
     ".....QQQQQQQQQQQQQQQQQQQQQQ...",".....QQQQQQQQQQQQQQQQQQQQQQ...",
     ".....qQQQQQQQQQQQQQQQQQQQQq...",".....qqQQQQQQQQQQQQQQQQQQqq...",
@@ -187,7 +193,7 @@
       for (let s = 0; s < 6; s++) {
         const g = r.guests[s];
         leds.push({
-          x: r.x + RACK_W - 7, y: top + 4 + s * 6,
+          x: r.x + RACK_W - 7, y: top + 12 + s * 6,
           color: !g ? C.off : g.status === "running" ? C.on : C.bad,
           period: PERIODS[(ri + s) % PERIODS.length],
           phase: (ri * 137 + s * 61) % 1000,
@@ -252,23 +258,6 @@
 
     // --- cable runs snaking between the rack rows, Noita-ish clutter that also
     // happens to be what a real floor like this looks like
-    // Floor looms, laid in the AISLES. The previous run sat at AISLE_MAIN + 12,
-    // which is exactly the top edge of the back row, so it drew a hard line
-    // across the racks instead of a cable on the ground.
-    for (const [y0, x0, x1] of [[ROW_A_Y + 26, 200, 424], [ROW_B_Y + 22, 214, 400]]) {
-      for (let x = x0; x < x1; x++) {
-        const yy = y0 + Math.round(Math.sin(x / 21) * 4);
-        b.fillStyle = C.ink;  b.fillRect(x, yy, 1, 4);
-        // A continuous highlight made these read as pale lines once the light
-        // pools brightened them. Broken into occasional glints instead.
-        if (x % 11 === 0) { b.fillStyle = C.stl2; b.fillRect(x, yy, 1, 1); }
-      }
-      b.fillStyle = C.stl2;                              // a junction box on the run
-      b.fillRect(x0 + 60, y0 + Math.round(Math.sin((x0 + 60) / 21) * 4) - 2, 9, 7);
-      b.fillStyle = C.stl4;
-      b.fillRect(x0 + 60, y0 + Math.round(Math.sin((x0 + 60) / 21) * 4) - 2, 9, 1);
-    }
-
     signHardware(b);
     studio(b);
     lightPools(b);
@@ -503,8 +492,8 @@
     }
 
     // 1U units: bezel, vent mesh, a handle, and a drive bay
-    for (let u = 0; u < 6; u++) {
-      const uy = top + TOP_H + 2 + u * 6;
+    for (let u = 0; u < 5; u++) {
+      const uy = top + TOP_H + 10 + u * 6;
       const g = r.guests[u];
       ctx.fillStyle = C.stl2; ctx.fillRect(x + 3, uy, RACK_W - 6, 5);
       ctx.fillStyle = C.stl4; ctx.fillRect(x + 3, uy, RACK_W - 6, 1);
@@ -519,9 +508,14 @@
     ctx.fillStyle = "rgba(11,10,16,.42)";
     ctx.fillRect(x - 3, r.base, RACK_W + 6, 3);
 
-    ctx.fillStyle = burning.has(r.node) ? C.fMid : C.dim;
-    ctx.font = "7px ui-monospace, monospace"; ctx.textAlign = "center";
-    ctx.fillText(r.node.replace("prxy-", ""), x + RACK_W / 2, top - 4);
+    // Label plate on the rack itself. Floating text above an object reads as UI
+    // hovering in the air; screwed to the chassis it reads as part of the room.
+    const plateY = top + TOP_H + 1;
+    ctx.fillStyle = C.stl1; ctx.fillRect(x + 3, plateY, RACK_W - 6, 7);
+    ctx.fillStyle = C.stl2; ctx.fillRect(x + 3, plateY, RACK_W - 6, 1);
+    ctx.fillStyle = burning.has(r.node) ? C.fMid : C.stl6;
+    ctx.font = "6px ui-monospace, monospace"; ctx.textAlign = "center";
+    ctx.fillText(r.node.replace("prxy-", ""), x + RACK_W / 2, plateY + 6);
     ctx.textAlign = "left";
     if (burning.has(r.node)) {
       const seed = r.x * 31 + r.base;
