@@ -132,7 +132,7 @@
   const SLEEP = [
     "........hhhhhh................","......hhhhhhhhhh..............",
     ".....thhSSSSSShH..............",".....thSSSSSSSSH..............",
-    ".....thSS-SS-SSH..............",".....thSSSSSSSSH..............",
+    ".....thS--SS--SH..............",".....thSSSSSSSSH..............",
     "......hSSSSSSH................","......QQQQQQQQQQQQQQQQQQQQ....",
     ".....QQQQQQQQQQQQQQQQQQQQQQ...",".....QQQQQQQQQQQQQQQQQQQQQQ...",
     ".....qQQQQQQQQQQQQQQQQQQQQq...",".....qqQQQQQQQQQQQQQQQQQQqq...",
@@ -1409,6 +1409,152 @@
     ctx.globalAlpha = 1;
   }
 
+
+  // --- fire, and the fighting of it -----------------------------------------
+
+  // Two octaves of the stable hash: a slow one that makes the flame writhe and a
+  // fast one that makes it crackle. One octave alone either strobes or crawls.
+  function flameHeight(seed, i, w, now) {
+    const slow = hash2(seed + i * 7, Math.floor(now / 110));
+    const fast = hash2(seed + i * 131, Math.floor(now / 55));
+    const taper = 1 - Math.abs((i / Math.max(1, w - 1)) * 2 - 1);   // tallest mid-rack
+    return Math.round((2 + (slow * 0.65 + fast * 0.35) * 11) * (0.3 + taper));
+  }
+
+
+  function drawFire(x, y, w, now, seed, wet) {
+    wet = wet === undefined ? 1 : wet;
+    for (let i = 0; i < w; i++) {
+      const h = Math.max(1, Math.round(flameHeight(seed, i, w, now) * wet));
+      for (let j = 0; j < h; j++) {
+        const f = j / Math.max(1, h);            // 0 at the base, 1 at the tip
+        ctx.fillStyle = f > 0.82 ? C.fDark : f > 0.58 ? C.fEdge
+                      : f > 0.3 ? C.fMid : f > 0.12 ? C.fHot : C.fCore;
+        ctx.fillRect(x + i, y - j, 1, 1);
+      }
+    }
+    // embers and smoke climbing out of the top, wrapping on a long cycle
+    for (let k = 0; k < 5; k++) {
+      const ph = (now / (260 + k * 70) + hash2(seed, k) * 6) % 1;
+      const ex = x + Math.round(hash2(seed + k * 31, Math.floor(now / 900 + k)) * (w - 1));
+      const ey = y - 12 - Math.round(ph * 20);
+      if (ey < 2) continue;
+      ctx.fillStyle = ph < 0.45 ? C.fMid : C.smoke;
+      ctx.fillRect(ex + (ph > 0.6 ? 1 : 0), ey, 1, 1);
+    }
+  }
+
+  // Restored. 7b9711b deleted this whole subsystem but left every call site in
+  // place, so drawRack and the fight pose both threw on any burning rack: the
+  // room rendered nothing at all during an escalation, which is the one moment
+  // it has a job to do. Found by rendering the states rather than the happy path.
+
+  // --- the bucket brigade ---------------------------------------------------
+  // One throw cycle, derived entirely from the clock so it needs no state:
+  // wind up, throw, water arcs over, lands, steam. The fire is knocked down
+  // where the water hits and comes straight back, because the rack is burning
+  // until somebody acks the escalation -- not until Fred works harder.
+  const THROW_MS = 1700, RELEASE = 0.42, FLIGHT = 0.34;
+
+
+  function throwPhase(now, seed) {
+    return ((now + seed * 211) % THROW_MS) / THROW_MS;
+  }
+
+
+  // 0 while the water is in the air, rising to 1 over the seconds after it
+  // lands, so the flames recover rather than snapping back.
+  function doused(now, seed) {
+    const p = throwPhase(now, seed);
+    const land = RELEASE + FLIGHT;
+    if (p < land) return 1;
+    return Math.min(1, 0.25 + (p - land) / (1 - land) * 0.9);
+  }
+
+
+  // He is only fighting the rack he actually walked to.
+  function fightingHere(r) {
+    return fred.activity === "fight" && !walking && !fred.asleep &&
+      Math.abs(fred.x - (r.x + RACK_W / 2)) < 12 &&
+      Math.abs(fred.y - (r.base === ROW_A_Y ? AISLE_MAIN : AISLE_FRONT)) < 8;
+  }
+
+
+  function drawBucket(fx, fy, now, seed) {
+    const p = throwPhase(now, seed);
+    // low at the side, swung up and over for the throw, then back down
+    let bx = fx + 5, by = fy - 9, full = true;
+    if (p > RELEASE - 0.12 && p < RELEASE) { bx = fx + 4; by = fy - 15; }
+    else if (p >= RELEASE && p < RELEASE + 0.18) { bx = fx + 2; by = fy - 17; full = false; }
+    else if (p >= RELEASE + 0.18) { bx = fx + 5; by = fy - 9; full = false; }
+    bx = Math.round(bx); by = Math.round(by);
+    ctx.fillStyle = C.bucketRim; ctx.fillRect(bx, by, 4, 1);
+    ctx.fillStyle = C.bucket;
+    ctx.fillRect(bx, by + 1, 1, 3); ctx.fillRect(bx + 3, by + 1, 1, 3);
+    ctx.fillRect(bx + 1, by + 4, 2, 1);
+    if (full) { ctx.fillStyle = C.water; ctx.fillRect(bx + 1, by + 1, 2, 3); }
+  }
+
+
+  function drawWater(fx, fy, tx, ty, now, seed) {
+    const p = throwPhase(now, seed);
+    if (p < RELEASE || p > RELEASE + FLIGHT) return;
+    const t = (p - RELEASE) / FLIGHT;
+    const sx = fx + 2, sy = fy - 16;
+    for (let i = 0; i < 7; i++) {
+      const tt = Math.max(0, t - i * 0.05);
+      if (tt <= 0) continue;
+      const x = sx + (tx - sx) * tt + (i - 3) * 0.6;
+      // a lobbed arc: up early, down onto the rack
+      const y = sy + (ty - sy) * tt - Math.sin(tt * Math.PI) * 13;
+      ctx.fillStyle = i % 3 === 0 ? C.waterLit : C.water;
+      ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
+    }
+    // splash on arrival
+    if (t > 0.86) {
+      ctx.fillStyle = C.waterLit;
+      for (let i = 0; i < 5; i++) {
+        const s = (t - 0.86) / 0.14;
+        ctx.fillRect(Math.round(tx - 4 + i * 2), Math.round(ty - s * 3 - (i % 2)), 1, 1);
+      }
+    }
+  }
+
+
+  function fireGlow(x, y, w, now, seed, wet) {
+    wet = wet === undefined ? 1 : wet;
+    // Elliptical and drawn per scanline: nested rectangles read as a lit box
+    // hanging over the rack, which is exactly how this looked on the first pass.
+    // It also flickers -- a steady glow reads as a lamp, not a fire.
+    const puls = (0.72 + hash2(seed, Math.floor(now / 70)) * 0.55) * wet;
+    const cx = x + w / 2, rx = w + 12, ry = 17;
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = "#ff8a3c";
+    for (let dy = -ry; dy <= ry; dy++) {
+      const k = 1 - (dy * dy) / (ry * ry);
+      if (k <= 0) continue;
+      const hw = Math.round(rx * Math.sqrt(k));
+      ctx.globalAlpha = 0.085 * k * k * puls;
+      ctx.fillRect(Math.round(cx - hw), Math.round(y + dy), hw * 2, 1);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+
+  function drawSteam(tx, ty, now, seed) {
+    const p = throwPhase(now, seed);
+    const land = RELEASE + FLIGHT;
+    if (p < land || p > land + 0.42) return;
+    const t = (p - land) / 0.42;
+    ctx.fillStyle = C.steam;
+    ctx.globalAlpha = 0.55 * (1 - t);
+    for (let i = 0; i < 6; i++) {
+      const x = tx - 5 + ((hash2(seed + i * 17, i) * 11) | 0);
+      ctx.fillRect(Math.round(x), Math.round(ty - 2 - t * 16 - i), 1, 1);
+    }
+    ctx.globalAlpha = 1;
+  }
 
   // --- render --------------------------------------------------------------
   let prevX = fred.x, prevY = fred.y;
