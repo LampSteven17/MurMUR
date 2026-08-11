@@ -277,7 +277,7 @@
 
   // --- room geometry -------------------------------------------------------
   const WALL_H = 70, FLOOR_B = 288;
-  const BUNK = {x:9, y:76, w:154, h:206};
+  const BUNK = {x:9, y:72, w:154, h:210};
   // Studio interior is x 9..163, y 76..282. Everything below is placed against a
   // wall with a clear gap to its neighbours -- the previous pass had the shelf
   // sitting inside the desk.
@@ -287,24 +287,29 @@
   // number and finding the gap later. Each piece keeps {x,y,w,h} as its visual
   // footprint (y is the back edge, y+h the base) because Fred's walk targets are
   // expressed against those.
-  const WALL_Y = 76;
+  // The skirting caps at WALL_H and the floor tiles start at WALL_H+2, so that
+  // -- not the rug's old y -- is where the wall actually meets the floor. Using
+  // 76 here left every back-wall piece floating on a 4px strip of bare floor.
+  const WALL_Y = WALL_H + 2;
   const WINDOW = {x:36, y:10, w:96, h:50};
   const backBase = (h, d) => WALL_Y + h + Math.round(d * DEPTH_RISE);
   const piece = (x, w, d, h, base) =>
     ({x, w, d, bh: h, y: base - h - Math.round(d * DEPTH_RISE),
       h: h + Math.round(d * DEPTH_RISE)});
 
-  // back wall, left to right: fridge in the corner, counter under the window,
-  // shelf in the far corner
   const FRIDGE  = piece(14,  24, 16, 52, backBase(52, 16));
-  const KITCHEN = piece(52,  64, 16, 26, backBase(26, 16));
-  const SHELF   = piece(140, 16, 12, 46, backBase(46, 12));
-  // middle band: the bed, and the telly across from it
-  const BED     = piece(12,  42, 44, 10, 214);
-  const TVST    = piece(96,  40, 14, 14, 214);
-  const TV      = piece(99,  34,  8, 24, TVST.y + TVST.h - 14);
-  // front: the desk under the bed, an armchair by the door
+  const KITCHEN = piece(50,  64, 24, 26, backBase(26, 24));   // deep enough to
+  const SHELF   = piece(140, 16, 12, 46, backBase(46, 12));   // work a hob on
+  const BED     = piece(12,  32, 44, 10, 214);
+  const TVST    = piece(96,  40, 16, 14, 214);
+  // The telly sits two rows back on the stand's top face, so its own footprint
+  // ends inside the stand's rather than hanging off the back of it.
+  const TV      = piece(104, 28,  8, 22, TVST.y + TVST.h - TVST.bh - 3);
   const DESK    = piece(12,  64, 16, 14, 252);
+  const STOOL   = piece(34,  22, 12, 13, 268);   // wider than Fred, and tucked
+                                                // close: every px it sits forward
+                                                // of the desk drops him a px
+                                                // relative to the desk surface
   const CHAIR   = piece(100, 34, 16, 14, 266);
   const PLANT   = piece(142, 16, 10, 13, 272);
   const DOOR = {y0:238, y1:280};
@@ -469,21 +474,47 @@
     b.fillStyle = C.on;    b.fillRect(FRIDGE.x + 10, fT + 6, 3, 2);
     b.fillStyle = C.wood5; b.fillRect(FRIDGE.x + 6, fT + 24, 8, 6);
 
-    // Kitchen counter, centred under the window.
+    // Kitchen counter, centred under the window. Hobs and sink go on the TOP
+    // face and cupboards on the FRONT face -- they had all been drawn on the
+    // front, so the cooktop sat on the same plane as the cupboard doors and
+    // nothing lined up with anything.
     const kc = box(KITCHEN, MAT.unit);
-    const kT = KITCHEN.y + KITCHEN.h - KITCHEN.bh;
-    for (const hx of [KITCHEN.x + 8, KITCHEN.x + 25]) {
-      b.fillStyle = C.hob;  b.fillRect(hx, kT + 5, 12, 11);
-      b.fillStyle = C.stl3; b.fillRect(hx + 2, kT + 7, 8, 1);
-      b.fillRect(hx + 2, kT + 13, 8, 1);
-      b.fillRect(hx + 1, kT + 9, 1, 4); b.fillRect(hx + 10, kT + 9, 1, 4);
+    const kT = KITCHEN.y + KITCHEN.h - KITCHEN.bh;      // top of the front face
+    fillTopBand(b, kc, C.counterLit, 0.02, 0.98, 0.90, 0.98);   // backsplash edge
+    for (const u of [0.06, 0.29]) {                             // two hob plates
+      fillTopBand(b, kc, C.ink, u,        u + 0.19, 0.28, 0.76);
+      fillTopBand(b, kc, C.hob, u + 0.02, u + 0.17, 0.34, 0.70);
+      fillTopBand(b, kc, C.stl3, u + 0.06, u + 0.13, 0.44, 0.60);
     }
-    b.fillStyle = C.stl2; b.fillRect(KITCHEN.x + 45, kT + 4, 14, 14);
-    b.fillStyle = C.stl4; b.fillRect(KITCHEN.x + 46, kT + 5, 12, 2);
-    b.fillStyle = C.stl5; b.fillRect(KITCHEN.x + 51, kT - 4, 1, 8);
-    b.fillRect(KITCHEN.x + 51, kT - 4, 4, 1);
-    fillTopBand(b, kc, C.counterLit, 0.06, 0.94, 0.30, 0.36);
-    for (const u of [0.10, 0.42, 0.72]) fillTopBand(b, kc, C.wood5, u, u + 0.12, 0.55, 0.85);
+    fillTopBand(b, kc, C.stl1, 0.57, 0.93, 0.20, 0.84);         // sink surround
+    fillTopBand(b, kc, C.stl4, 0.57, 0.93, 0.20, 0.24);         // lit front rim
+    fillTopBand(b, kc, C.ink,  0.62, 0.88, 0.30, 0.74);         // basin
+    fillTopBand(b, kc, C.stl2, 0.62, 0.88, 0.30, 0.33);         // far wall of it
+
+    // The tap rises off the counter's back edge and onto the wall, which is
+    // where the back edge already is -- so it has to be placed from the top
+    // face's own coordinates, not from the front face's top.
+    const kDy = Math.round(KITCHEN.d * DEPTH_RISE);
+    const kBack = (KITCHEN.y + KITCHEN.h) - KITCHEN.bh - kDy;   // = the wall line
+    const tapX = KITCHEN.x + Math.round(KITCHEN.d * DEPTH_SHEAR) + Math.round(KITCHEN.w * 0.75);
+    b.fillStyle = C.stl5;
+    b.fillRect(tapX, kBack - 9, 2, 11);                          // riser
+    b.fillRect(tapX - 6, kBack - 9, 8, 2);                       // spout
+    b.fillStyle = C.stl3; b.fillRect(tapX - 6, kBack - 6, 2, 2); // outlet
+    b.fillStyle = C.stl4; b.fillRect(tapX + 3, kBack - 5, 2, 1); // handle
+
+    // Cupboard fronts: one shared margin and gap, so the doors are aligned by
+    // arithmetic rather than by three hand-picked offsets.
+    const DOORS = 3, MARG = 3, GAP = 2;
+    const dw = Math.floor((KITCHEN.w - MARG * 2 - GAP * (DOORS - 1)) / DOORS);
+    for (let i = 0; i < DOORS; i++) {
+      const dx0 = KITCHEN.x + MARG + i * (dw + GAP);
+      b.fillStyle = C.chairA; b.fillRect(dx0, kT + 3, dw, KITCHEN.bh - 9);
+      b.fillStyle = C.counterLit; b.fillRect(dx0, kT + 3, dw, 1);
+      b.fillStyle = C.ink; b.fillRect(dx0 + dw - 4, kT + 8, 2, 5);   // handle
+    }
+    b.fillStyle = C.ink;                                        // toe kick
+    b.fillRect(KITCHEN.x, kT + KITCHEN.bh - 5, KITCHEN.w, 4);
 
     // Bookshelf, right corner.
     box(SHELF, MAT.wood);
@@ -494,18 +525,14 @@
     }
 
     // --- middle band -------------------------------------------------------
-    // Bed against the left wall, bedding banded onto its own top face.
-    const bc = box(BED, MAT.wood);
-    fillTopBand(b, bc, C.cloth2, 0.05, 0.95, 0.00, 0.98);
-    fillTopBand(b, bc, C.cloth3, 0.05, 0.95, 0.94, 0.98);
-    fillTopBand(b, bc, C.quilt,  0.05, 0.95, 0.00, 0.46);
-    fillTopBand(b, bc, "#8a5866", 0.05, 0.95, 0.44, 0.46);
-    for (const v of [0.10, 0.22, 0.34]) fillTopBand(b, bc, "#8a5866", 0.05, 0.95, v, v + 0.02);
-    fillTopBand(b, bc, C.pillow, 0.14, 0.86, 0.72, 0.92);
-    fillTopBand(b, bc, C.cloth4, 0.14, 0.86, 0.88, 0.92);
-
     // Telly on its stand, across the room from the bed.
     box(TVST, MAT.wood);
+    const vT = TVST.y + TVST.h - TVST.bh;
+    for (let i = 0; i < 2; i++) {
+      const vx = TVST.x + 3 + i * (Math.floor((TVST.w - 8) / 2) + 2);
+      b.fillStyle = C.wood2; b.fillRect(vx, vT + 3, Math.floor((TVST.w - 8) / 2), TVST.bh - 7);
+      b.fillStyle = C.wood5; b.fillRect(vx, vT + 3, Math.floor((TVST.w - 8) / 2), 1);
+    }
     box(TV, MAT.steel, {shadow: false});
     const tT = TV.y + TV.h - TV.bh;
     b.fillStyle = C.ink; b.fillRect(TV.x + 3, tT + 3, TV.w - 6, TV.bh - 8);
@@ -535,25 +562,71 @@
     b.fillStyle = C.wood3; b.fillRect(DESK.x + 57, dT + 5, 1, 3);
     TERMINAL = {x: M.x + 3, y: M.y + 3, w: M.w - 6, h: M.h - 8};
 
-    // A backless stool, deliberately: a chair back sits between the viewer and
-    // the seat, so it would occlude Fred every time he sat down to work.
-    const sc = drawBox(b, DESK.x + 22, DESK.y + DESK.h + 22, 18, 12, 13, MAT.chair);
-    fillTopBand(b, sc, C.cloth2, 0.12, 0.88, 0.15, 0.85);
-
-    // Armchair by the door.
-    const ac = box(CHAIR, MAT.chair);
-    drawBox(b, CHAIR.x + 2, CHAIR.y + CHAIR.h - 12, CHAIR.w - 4, 8, 20, MAT.chair, {shadow: false});
-    fillTopBand(b, ac, C.cloth2, 0.12, 0.88, 0.10, 0.70);
-
-    // Plant in the near corner.
-    box(PLANT, MAT.wood);
-    b.fillStyle = C.onDim;
-    for (const [dx, dy] of [[3,-6],[6,-12],[9,-8],[12,-4],[7,-4],[10,-13]])
-      b.fillRect(PLANT.x + dx, PLANT.y + PLANT.h - PLANT.bh + dy, 3, 3);
-    b.fillStyle = C.on;
-    for (const [dx, dy] of [[6,-12],[10,-13]])
-      b.fillRect(PLANT.x + dx, PLANT.y + PLANT.h - PLANT.bh + dy, 2, 2);
   }
+
+
+  // --- props Fred can be on ------------------------------------------------
+  // These four are NOT baked into the background. Everything else in the room
+  // is, because Fred can never be behind it -- but a piece he sits on or lies
+  // in has to render partly behind him and partly in front, and a baked layer
+  // can only ever be wholly behind. That single fact is why sitting looked
+  // wrong at every seat coordinate I tried: there was no depth relationship to
+  // get right, only a paint order that could not change.
+  //
+  // So each prop is split into the parts behind the occupant and the parts in
+  // front, and rendering an occupied prop is a sandwich: back, occupant, front.
+  // Unoccupied, the two halves just draw back to back and it is an ordinary
+  // piece of furniture. This is the standard 2D answer -- y-sort by baseline
+  // for the general case, with an explicit override for the case a single sort
+  // key cannot express.
+  function bedBack(g) {
+    const bc = drawBox(g, BED.x, BED.y + BED.h, BED.w, BED.d, BED.bh, MAT.wood);
+    fillTopBand(g, bc, C.cloth2, 0.05, 0.95, 0.00, 0.98);
+    fillTopBand(g, bc, C.cloth3, 0.05, 0.95, 0.94, 0.98);
+    fillTopBand(g, bc, C.quilt,  0.05, 0.95, 0.00, 0.46);
+    fillTopBand(g, bc, "#8a5866", 0.05, 0.95, 0.44, 0.46);
+    for (const v of [0.10, 0.22, 0.34]) fillTopBand(g, bc, "#8a5866", 0.05, 0.95, v, v + 0.02);
+    fillTopBand(g, bc, C.pillow, 0.14, 0.86, 0.72, 0.92);
+    fillTopBand(g, bc, C.cloth4, 0.14, 0.86, 0.88, 0.92);
+  }
+
+  function stoolBack(g) {
+    const sc = drawBox(g, STOOL.x, STOOL.y + STOOL.h, STOOL.w, STOOL.d, STOOL.bh, MAT.chair);
+    fillTopBand(g, sc, C.cloth2, 0.12, 0.88, 0.15, 0.85);
+  }
+
+  // Seat and backrest go behind him; the arms come back over his sides, which
+  // is what makes him read as sat *in* the chair rather than on top of a picture
+  // of one.
+  function chairBack(g) {
+    const ac = drawBox(g, CHAIR.x, CHAIR.y + CHAIR.h, CHAIR.w, CHAIR.d, CHAIR.bh, MAT.chair);
+    drawBox(g, CHAIR.x + 4, CHAIR.y + CHAIR.h - 12, CHAIR.w - 8, 8, 20, MAT.chair, {shadow: false});
+    fillTopBand(g, ac, C.cloth2, 0.14, 0.86, 0.10, 0.72);
+  }
+  function chairFront(g) {
+    for (const ax of [CHAIR.x, CHAIR.x + CHAIR.w - 7]) {
+      drawBox(g, ax, CHAIR.y + CHAIR.h, 7, CHAIR.d, 20, MAT.chair, {shadow: false});
+    }
+  }
+
+  function plantBack(g) {
+    drawBox(g, PLANT.x, PLANT.y + PLANT.h, PLANT.w, PLANT.d, PLANT.bh, MAT.wood);
+    const py = PLANT.y + PLANT.h - PLANT.bh;
+    g.fillStyle = C.onDim;
+    for (const [dx, dy] of [[3,-6],[6,-12],[9,-8],[12,-4],[7,-4],[10,-13]])
+      g.fillRect(PLANT.x + dx, py + dy, 3, 3);
+    g.fillStyle = C.on;
+    for (const [dx, dy] of [[6,-12],[10,-13]]) g.fillRect(PLANT.x + dx, py + dy, 2, 2);
+  }
+
+  const PROPS = {
+    bed:   {P: BED,   back: bedBack,   front: null},
+    stool: {P: STOOL, back: stoolBack, front: null},
+    chair: {P: CHAIR, back: chairBack, front: chairFront},
+    plant: {P: PLANT, back: plantBack, front: null},
+  };
+  // Which prop each settled activity puts him on.
+  const OCCUPIES = {sleep: "bed", type: "stool", read: "chair"};
 
   function lightPools(b) {
     // Soft overhead throw, not hard ellipses. The previous version banded badly:
@@ -1064,9 +1137,18 @@
     dist: 0, asleep: true, activity: "sleep", say: "", sayUntil: 0,
     lastEvent: Date.now(),
   };
-  const DESK_SEAT = {x: DESK.x + 31, y: DESK.y + 42};   // in front of the stool
-  const COOK_SPOT = {x: KITCHEN.x + 22, y: KITCHEN.y + KITCHEN.h + 22};
-  const READ_SPOT = {x: CHAIR.x + 17, y: CHAIR.y + CHAIR.h + 6};
+  // Where he actually sits, rather than a point on the floor near the furniture:
+  // the centre of a seat's top face, k rows back from its front edge. Derived
+  // from the piece so it follows if the piece moves. The seated poses are drawn
+  // with their legs cropped off and their bottom row on y, so y IS the seat.
+  const seatOn = (P, k) => ({
+    x: P.x + Math.round(Math.round(P.d * DEPTH_SHEAR) * (k + 1) /
+                        Math.round(P.d * DEPTH_RISE)) + Math.round(P.w / 2),
+    y: (P.y + P.h) - P.bh - 1 - k,
+  });
+  const DESK_SEAT = seatOn(STOOL, 1);
+  const READ_SPOT = seatOn(CHAIR, 1);
+  const COOK_SPOT = {x: KITCHEN.x + 20, y: KITCHEN.y + KITCHEN.h + 18};  // stands
   let unacked = 0, tl = null, walking = false;
   // A rack burns while it has an unacked escalation -- which is what "that
   // server is on fire" actually means. Cleared by an ack or an all-clear.
@@ -1236,29 +1318,58 @@
     // y-sort by baseline, so Fred passes behind the back row and in front of
     // the front row with no special-casing anywhere.
     const items = racks.map(r => ({sortY: r.base, sortX: r.x, r}));
-    items.push({sortY: fred.asleep ? BED.y + 15 : fred.y, sortX: fred.x, fred: true});
+
+    // The prop he is currently on rides with him instead of sorting on its own,
+    // because "inside" is not a position on the depth axis -- see PROPS.
+    const onProp = walking ? null : OCCUPIES[fred.activity];
+    for (const key of Object.keys(PROPS)) {
+      if (key === onProp) continue;
+      const pr = PROPS[key];
+      items.push({sortY: pr.P.y + pr.P.h, sortX: pr.P.x, prop: pr});
+    }
+    const rider = onProp ? PROPS[onProp] : null;
+    items.push({
+      sortY: rider ? rider.P.y + rider.P.h : fred.y,
+      sortX: fred.x, fred: true, prop: rider,
+    });
     items.sort((a, b) => (a.sortY - b.sortY) || (a.sortX - b.sortX));
 
     for (const it of items) {
+      if (it.prop && !it.fred) {          // unoccupied: the halves just meet up
+        it.prop.back(ctx);
+        if (it.prop.front) it.prop.front(ctx);
+        continue;
+      }
       if (!it.fred) { drawRack(it.r); continue; }
+      if (it.prop) it.prop.back(ctx);     // ... and the sandwich when he is on it
       if (fred.asleep) {
         const rise = Math.floor(now / 1000) % 2 ? -1 : 0;
         blit(SLEEP, BED.x + 12, BED.y + 4 + rise, false);
+        if (it.prop && it.prop.front) it.prop.front(ctx);
         continue;
       }
-      ctx.fillStyle = "rgba(11,10,16,.45)";
-      ctx.fillRect(Math.round(fred.x) - 7, Math.round(fred.y) - 2, 14, 3);
+      // No floor shadow when he is on a prop -- it landed on the seat, not the
+      // floor. Riding a prop is exactly the condition, so ask that.
+      if (!it.prop) {
+        ctx.fillStyle = "rgba(11,10,16,.45)";
+        ctx.fillRect(Math.round(fred.x) - 7, Math.round(fred.y) - 2, 14, 3);
+      }
+
+      // A settled Fred still breathes. Two frames, ~1.5s apart: any faster and
+      // it reads as a twitch, any smaller than a whole pixel is not expressible.
+      // This is the one thing that separates "idle" from "paused".
+      const breath = Math.floor(now / 1500) % 2 ? -1 : 0;
 
       // Standing still is the least informative thing he can do, so every
       // arrival hands off to a pose that says what he is actually doing.
       if (!walking && fred.activity === "read") {
-        blit(SPR.side.slice(0, 22), fred.x - 9, fred.y - 22, fred.flip);
-        drawBook(fred.x - 9, fred.y, now);
+        blit(SPR.side.slice(0, 22), fred.x - 9, fred.y - 22 + breath, fred.flip);
+        drawBook(fred.x - 9, fred.y + breath, now);
       } else if (!walking && fred.activity === "cook") {
         const stir = Math.floor(now / 300) % 2;
         blit(SPR.up, fred.x - 9, fred.y - 27 - stir, false);
       } else if (!walking && fred.activity === "type") {
-        blit(SPR.up.slice(0, 20), fred.x - 9, fred.y - 20, false);
+        blit(SPR.up.slice(0, 22), fred.x - 9, fred.y - 22 + breath, false);
       } else if (!walking && fred.activity === "inspect") {
         blit(SPR.up.slice(0, 24), fred.x - 9, fred.y - 24 + (Math.floor(now / 260) % 2), false);
       } else if (!walking && fred.activity === "fight") {
@@ -1277,8 +1388,10 @@
       } else {
         const key = (fred.dir === "left" || fred.dir === "right") ? "side" : fred.dir;
         const rows = apart ? SPR[key].slice(0, 21).concat(LEGS_APART[key]) : SPR[key];
-        blit(rows, fred.x - 9, fred.y - 27 + (apart ? -1 : 0), fred.flip);
+        const rise = apart ? -1 : (moved > 0.05 ? 0 : breath);
+        blit(rows, fred.x - 9, fred.y - 27 + rise, fred.flip);
       }
+      if (it.prop && it.prop.front) it.prop.front(ctx);
     }
 
     for (const g of pendingGlow) fireGlow(g[0], g[1], g[2], now, g[3], g[4]);
