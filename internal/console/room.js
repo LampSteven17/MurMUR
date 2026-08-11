@@ -16,7 +16,11 @@
   const cvs = document.getElementById("room");
   if (!cvs) return;
 
-  const W = 240, H = 160, TILE = 16;
+  // 320x200. Chosen as a modern square-pixel 8:5 canvas, not as VGA nostalgia:
+  // this widget sizes its own CSS box, so 16:9 divisibility matters far less
+  // than an aspect that suits a room interior. 320x180 would have cost 20 rows
+  // of height that a top-down room actually needs.
+  const W = 320, H = 200, TILE = 16;
   cvs.width = W; cvs.height = H;
   const ctx = cvs.getContext("2d", {alpha: false});
   ctx.imageSmoothingEnabled = false;
@@ -128,20 +132,20 @@
   }
 
   // --- room geometry -------------------------------------------------------
-  const WALL_H = 26, FLOOR_B = 154;
-  const BUNK = {x:6, y:30, w:58, h:120};
-  const BED  = {x:14, y:44, w:26, h:34};
-  const WINDOW  = {x:18, y:5, w:26, h:16};    // in the back wall, above the bunk
-  const KITCHEN = {x:44, y:44, w:18, h:20};   // counter + hob, right of the bed
-  const CHAIR   = {x:46, y:92, w:15, h:16};   // armchair he reads in
-  const SHELF   = {x:8,  y:70, w:6,  h:18};   // a few books against the wall
-  const DOOR = {y0:126, y1:150};              // gap in the bunk's right wall
-  const RACK_W = 16, RACK_H = 28, TOP_H = 5;  // 5px top face, 23px front face
-  const ROW_A_Y = 72, ROW_B_Y = 128;          // baseline = front-most floor row
-  const RACK_X = [88, 124, 160, 196];
-  const AISLE_MAIN = 94, AISLE_FRONT = 148;   // the two lines Fred walks
-  const GAPS = [79, 114, 150, 186, 222];      // connectors between the rows
-  const DOOR_X = BUNK.x + BUNK.w + 10;
+  const WALL_H = 46, FLOOR_B = 192;           // taller wall, to host a real window
+  const BUNK = {x:6, y:50, w:102, h:138};     // the studio
+  const BED  = {x:14, y:58, w:38, h:46};      // properly sized now
+  const WINDOW  = {x:24, y:6, w:64, h:34};    // ~20% of canvas width
+  const KITCHEN = {x:66, y:58, w:38, h:30};   // its own corner, away from the bed
+  const CHAIR   = {x:70, y:128, w:22, h:22};
+  const SHELF   = {x:12, y:112, w:9, h:28};
+  const DOOR = {y0:158, y1:186};
+  const RACK_W = 18, RACK_H = 32, TOP_H = 6;
+  const ROW_A_Y = 104, ROW_B_Y = 168;
+  const RACK_X = [130, 176, 222, 268];
+  const AISLE_MAIN = 128, AISLE_FRONT = 184;
+  const GAPS = [122, 162, 208, 254, 298];
+  const DOOR_X = BUNK.x + BUNK.w + 12;
 
   let racks = [];   // {node, x, base, guests:[{name,status}]}
   const leds = [];
@@ -230,32 +234,39 @@
 
     // desk with a terminal, so the bunk reads as somewhere lived-in rather than
     // a blank slab. The screen is an emissive and gets its glow at draw time.
-    const D = {x: BUNK.x + 8, y: BUNK.y + 66, w: 34, h: 16};
+    const D = {x: BUNK.x + 8, y: BUNK.y + 78, w: 44, h: 20};
     b.fillStyle = C.rackEdge; b.fillRect(D.x - 1, D.y - 1, D.w + 2, D.h + 2);
     b.fillStyle = C.rackFace; b.fillRect(D.x, D.y, D.w, D.h);
     b.fillStyle = C.rackTop;  b.fillRect(D.x, D.y, D.w, 4);
-    b.fillStyle = C.rackEdge; b.fillRect(D.x + 6, D.y - 8, 14, 9);   // monitor body
-    b.fillStyle = C.vent;     b.fillRect(D.x + 7, D.y - 7, 12, 7);
-    b.fillStyle = C.rackEdge; b.fillRect(D.x + 24, D.y + 6, 4, 4);   // mug
-    b.fillStyle = C.bedFrame; b.fillRect(D.x + 25, D.y + 7, 2, 2);
-    // a chair, pushed in
-    b.fillStyle = C.rackEdge; b.fillRect(D.x + 12, D.y + 18, 10, 8);
-    b.fillStyle = C.rug;      b.fillRect(D.x + 13, D.y + 19, 8, 6);
+    b.fillStyle = C.rackEdge; b.fillRect(D.x + 8, D.y - 10, 18, 11);  // monitor
+    b.fillStyle = C.vent;     b.fillRect(D.x + 9, D.y - 9, 16, 9);
+    b.fillStyle = C.rackEdge; b.fillRect(D.x + 32, D.y + 7, 5, 5);    // mug
+    b.fillStyle = C.bedFrame; b.fillRect(D.x + 33, D.y + 8, 3, 3);
+    b.fillStyle = C.rackEdge; b.fillRect(D.x + 14, D.y + 22, 13, 10); // chair
+    b.fillStyle = C.rug;      b.fillRect(D.x + 15, D.y + 23, 11, 8);
 
-    // kitchenette: counter with a hob, so "cooking" has somewhere to happen
+    // kitchenette, now its own corner rather than crowding the bed
     b.fillStyle = C.rackEdge; b.fillRect(KITCHEN.x - 1, KITCHEN.y - 1, KITCHEN.w + 2, KITCHEN.h + 2);
     b.fillStyle = C.counter;    b.fillRect(KITCHEN.x, KITCHEN.y, KITCHEN.w, KITCHEN.h);
     b.fillStyle = C.counterTop; b.fillRect(KITCHEN.x, KITCHEN.y, KITCHEN.w, 4);
-    b.fillStyle = C.hob;        b.fillRect(KITCHEN.x + 3, KITCHEN.y + 7, 5, 5);
-    b.fillRect(KITCHEN.x + 10, KITCHEN.y + 7, 5, 5);
-    b.fillStyle = C.rackEdge;   b.fillRect(KITCHEN.x + 2, KITCHEN.y + 15, KITCHEN.w - 4, 1);
+    b.fillStyle = C.hob;
+    b.fillRect(KITCHEN.x + 4, KITCHEN.y + 9, 7, 7);
+    b.fillRect(KITCHEN.x + 15, KITCHEN.y + 9, 7, 7);
+    b.fillStyle = C.rackEdge;   b.fillRect(KITCHEN.x + 3, KITCHEN.y + 21, KITCHEN.w - 6, 1);
+    b.fillStyle = C.counterTop; b.fillRect(KITCHEN.x + 26, KITCHEN.y + 8, 9, 12);  // sink
+    b.fillStyle = C.hob;        b.fillRect(KITCHEN.x + 28, KITCHEN.y + 10, 5, 8);
 
     // armchair, facing the room
     b.fillStyle = C.rackEdge; b.fillRect(CHAIR.x - 1, CHAIR.y - 1, CHAIR.w + 2, CHAIR.h + 2);
     b.fillStyle = C.chairA;   b.fillRect(CHAIR.x, CHAIR.y, CHAIR.w, CHAIR.h);
     b.fillStyle = C.chairB;   b.fillRect(CHAIR.x + 2, CHAIR.y + 4, CHAIR.w - 4, CHAIR.h - 6);
-    b.fillStyle = C.chairA;   b.fillRect(CHAIR.x, CHAIR.y + 3, 2, CHAIR.h - 4);
-    b.fillRect(CHAIR.x + CHAIR.w - 2, CHAIR.y + 3, 2, CHAIR.h - 4);
+    b.fillStyle = C.chairA;
+    b.fillRect(CHAIR.x, CHAIR.y + 4, 3, CHAIR.h - 5);                 // arms
+    b.fillRect(CHAIR.x + CHAIR.w - 3, CHAIR.y + 4, 3, CHAIR.h - 5);
+    b.fillStyle = C.quilt;                                            // cushion
+    b.fillRect(CHAIR.x + 4, CHAIR.y + CHAIR.h - 8, CHAIR.w - 8, 4);
+    b.fillStyle = C.rackEdge;
+    b.fillRect(CHAIR.x + 3, CHAIR.y + 3, CHAIR.w - 6, 1);             // back seam
 
     // a few books
     b.fillStyle = C.rackEdge; b.fillRect(SHELF.x - 1, SHELF.y - 1, SHELF.w + 2, SHELF.h + 2);
@@ -285,12 +296,12 @@
         b.fillRect(Math.round(cx - hw), Math.round(cy + dy), hw * 2, 1);
       }
     };
-    pool(122, AISLE_MAIN - 4, 54, 15);
-    pool(196, AISLE_MAIN - 4, 44, 13);
-    pool(150, AISLE_FRONT - 2, 60, 14);
-    pool(BUNK.x + 26, BUNK.y + 78, 26, 12);
+    pool(176, AISLE_MAIN - 4, 72, 19);
+    pool(262, AISLE_MAIN - 4, 58, 17);
+    pool(206, AISLE_FRONT - 2, 84, 18);
+    pool(BUNK.x + 36, BUNK.y + 92, 38, 16);
     b.globalAlpha = 1; b.globalCompositeOperation = "source-over";
-    TERMINAL = {x: D.x + 7, y: D.y - 7, w: 12, h: 7};
+    TERMINAL = {x: D.x + 9, y: D.y - 9, w: 16, h: 9};
   }
 
   // Two octaves of the stable hash: a slow one that makes the flame writhe and a
@@ -450,88 +461,293 @@
   }
 
 
-  // --- the window ------------------------------------------------------------
-  // The one place the room admits an outside world. Sky colour follows the
-  // clock, everything in front of it follows the weather report.
+  // --- the view outside ------------------------------------------------------
+  // Season is carried almost entirely by PALETTE, not by shapes: the sky, hills
+  // and ground are ~95% of this aperture and the tree canopy under 6%. So four
+  // palettes share one canopy mask, and only winter swaps in a bare silhouette.
+  // Colours are drawn from a single parent (Resurrect 64) so seasons harmonise.
   let weather = null;   // {code, temp_c, is_day, wind_kph, stale} or null
 
-  // WMO codes, collapsed to what can actually be drawn at 26x16 px.
-  function sky(now) {
-    const h = new Date().getHours() + new Date().getMinutes() / 60;
-    const night = h < 5.5 || h >= 20.5;
-    const dusk = (h >= 5.5 && h < 7) || (h >= 18.5 && h < 20.5);
-    return {night, dusk, col: night ? C.skyNight : dusk ? C.skyDusk : C.skyDay};
+  const SEASONS = {
+    spring: {skyHi:"#8fd3ff", skyLo:"#c7dcd0", hill:"#92a984",
+             cDk:"#676633", cMid:"#a2a947", cLt:"#d5e04b", accent:"#eaaded",
+             gDk:"#547e64", gMid:"#91db69", gLt:"#cddf6c", trunk:"#4c3e24"},
+    summer: {skyHi:"#4d9be6", skyLo:"#8fd3ff", hill:"#547e64",
+             cDk:"#165a4c", cMid:"#239063", cLt:"#1ebc73", accent:null,
+             gDk:"#239063", gMid:"#1ebc73", gLt:"#91db69", trunk:"#4c3e24"},
+    autumn: {skyHi:"#7f708a", skyLo:"#9babb2", hill:"#966c6c",
+             cDk:"#9e4539", cMid:"#cd683d", cLt:"#e6904e", accent:"#fbb954",
+             gDk:"#676633", gMid:"#a2a947", gLt:"#ab947a", trunk:"#4c3e24"},
+    winter: {skyHi:"#7f708a", skyLo:"#9babb2", hill:"#9babb2",
+             cDk:"#3e3546", cMid:"#625565", cLt:"#9babb2", accent:null,
+             gDk:"#9babb2", gMid:"#c7dcd0", gLt:"#ffffff", trunk:"#3e3546"},
+  };
+
+  function seasonNow(d) {
+    const m = d.getMonth();                       // northern hemisphere
+    if (m <= 1 || m === 11) return "winter";
+    if (m <= 4) return "spring";
+    if (m <= 7) return "summer";
+    return "autumn";
   }
 
+  // WMO codes, collapsed to what can be drawn at this size.
   function weatherKind() {
     if (!weather) return "clear";
     const c = weather.code;
-    if (c >= 71 && c <= 77) return "snow";
-    if (c === 85 || c === 86) return "snow";
-    if ((c >= 51 && c <= 67) || (c >= 80 && c <= 82) || c === 95 || c === 96 || c === 99) return "rain";
+    if ((c >= 71 && c <= 77) || c === 85 || c === 86) return "snow";
+    if (c === 95 || c === 96 || c === 99) return "storm";
+    if ((c >= 51 && c <= 67) || (c >= 80 && c <= 82)) return "rain";
     if (c >= 45 && c <= 48) return "fog";
     if (c === 2 || c === 3) return "cloud";
     if (c === 1) return "part";
     return "clear";
   }
 
-  function drawWindow(now) {
-    const w = WINDOW, s = sky(now), kind = weatherKind();
-    ctx.fillStyle = C.frame; ctx.fillRect(w.x - 2, w.y - 2, w.w + 4, w.h + 4);
-    ctx.fillStyle = s.col;   ctx.fillRect(w.x, w.y, w.w, w.h);
+  function isNight() {
+    const h = new Date().getHours();
+    return h < 6 || h >= 20;
+  }
 
-    if (s.night) {
-      for (let i = 0; i < 9; i++) {
-        const sx = w.x + 2 + ((hash2(i * 41, 7) * (w.w - 4)) | 0);
-        const sy = w.y + 2 + ((hash2(i * 17, 3) * (w.h - 6)) | 0);
-        if (kind === "cloud" || kind === "rain" || kind === "snow") continue;
-        ctx.fillStyle = (Math.floor(now / 900) + i) % 7 === 0 ? C.moon : C.star;
-        ctx.fillRect(sx, sy, 1, 1);
+  // Blend a colour toward the sky. Atmospheric perspective and fog are the same
+  // operation at different strengths, so they share one function.
+  function haze(hex, skyHex, t) {
+    const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+    const [r,g,b] = p(hex), [sr,sg,sb] = p(skyHex);
+    const m = (a,c) => Math.round(a + (c - a) * t).toString(16).padStart(2,"0");
+    return "#" + m(r,sr) + m(g,sg) + m(b,sb);
+  }
+
+  // Canopy mask, shared by every leafed season. 1 = leaf, 2 = lit, 3 = shadow.
+  const CANOPY = [
+    "..11111..", ".1122111.", "112222111", "132222211",
+    "133222211", ".13222111", "..133111.", "...1.1...",
+  ];
+  const BRANCHES = [
+    "....#....", "..#.#.#..", ".#..#..#.", "..#.#.#..",
+    "....#....", "....#....", "....#....", "....#....",
+  ];
+
+  let landscape = null, landscapeKey = "";
+
+  // Baked once per (season, night, weather-kind) rather than per frame: this is
+  // the static half of the view and redrawing it every tick would be the only
+  // expensive thing in the scene.
+  function bakeLandscape(key, season, night, kind) {
+    const P = SEASONS[season];
+    const cv = document.createElement("canvas");
+    cv.width = WINDOW.w; cv.height = WINDOW.h;
+    const g = cv.getContext("2d");
+    const wet = kind === "rain" || kind === "storm";
+    const fog = kind === "fog";
+
+    // Sky: banded, never a smooth gradient -- banding is the idiom and
+    // dithering at this size reads as dirt.
+    let hi = P.skyHi, lo = P.skyLo;
+    if (night) { hi = "#141d33"; lo = "#243053"; }
+    else if (wet) { hi = haze(P.skyHi, "#4a4a58", 0.45); lo = haze(P.skyLo, "#6a6a76", 0.4); }
+    else if (fog) { hi = "#9babb2"; lo = "#c7dcd0"; }
+    const horizon = Math.round(WINDOW.h * 0.56);
+    g.fillStyle = hi; g.fillRect(0, 0, WINDOW.w, Math.round(horizon * 0.55));
+    g.fillStyle = lo; g.fillRect(0, Math.round(horizon * 0.55), WINDOW.w, horizon - Math.round(horizon * 0.55));
+
+    if (night && !fog && kind !== "cloud" && !wet) {
+      for (let i = 0; i < 22; i++) {
+        g.fillStyle = "#c0cbdc";
+        g.fillRect(2 + ((hash2(i * 41, 7) * (WINDOW.w - 4)) | 0),
+                   2 + ((hash2(i * 17, 3) * (horizon - 6)) | 0), 1, 1);
       }
-      if (kind === "clear" || kind === "part") {
-        ctx.fillStyle = C.moon;
-        ctx.fillRect(w.x + w.w - 9, w.y + 3, 4, 4);
-        ctx.fillStyle = s.col; ctx.fillRect(w.x + w.w - 11, w.y + 2, 3, 4);
-      }
-    } else if (kind === "clear" || kind === "part") {
-      ctx.fillStyle = C.sun;
-      ctx.fillRect(w.x + 4, w.y + 3, 5, 5);
-      ctx.fillRect(w.x + 3, w.y + 4, 7, 3);
     }
 
-    if (kind === "cloud" || kind === "part" || kind === "rain" || kind === "snow" || kind === "fog") {
-      const drift = Math.floor(now / 220) % (w.w + 16);
-      ctx.fillStyle = kind === "fog" ? C.steam : C.cloud;
-      for (const [ox, oy, cw] of [[0, 3, 11], [8, 7, 13], [-6, 10, 9]]) {
-        let cx = w.x + ((ox + drift) % (w.w + 14)) - 7;
-        for (let i = 0; i < cw; i++) {
-          const px = cx + i;
-          if (px < w.x || px >= w.x + w.w) continue;
-          const th = i === 0 || i === cw - 1 ? 1 : 2;
-          ctx.fillRect(px, w.y + oy, 1, th);
+    // Far hills: one flat band, hazed toward the sky. Fog just cranks the blend.
+    const hillT = fog ? 0.85 : wet ? 0.5 : 0.35;
+    g.fillStyle = haze(P.hill, lo, hillT);
+    for (let x = 0; x < WINDOW.w; x++) {
+      const hgt = 4 + Math.round(Math.sin(x / 9) * 2 + Math.sin(x / 23) * 2);
+      g.fillRect(x, horizon - hgt, 1, hgt);
+    }
+
+    // Ground: the loudest season signal, since it is ~44% of the aperture.
+    const gT = fog ? 0.55 : wet ? 0.25 : 0;
+    g.fillStyle = haze(P.gMid, lo, gT); g.fillRect(0, horizon, WINDOW.w, WINDOW.h - horizon);
+    g.fillStyle = haze(P.gDk, lo, gT);  g.fillRect(0, horizon, WINDOW.w, 1);
+    g.fillStyle = haze(P.gLt, lo, gT);
+    for (let i = 0; i < 26; i++) {
+      const x = (hash2(i * 13, 5) * WINDOW.w) | 0;
+      const y = horizon + 2 + ((hash2(i * 29, 9) * (WINDOW.h - horizon - 3)) | 0);
+      g.fillRect(x, y, 1, 1);
+    }
+
+    // The tree. Trunk crosses the horizon line -- one overlapping edge does more
+    // for depth than any amount of haze.
+    const tx = Math.round(WINDOW.w * 0.66), ty = horizon - 12;
+    g.fillStyle = haze(P.trunk, lo, gT);
+    g.fillRect(tx + 4, ty + 6, 2, 10);
+    const art = season === "winter" ? BRANCHES : CANOPY;
+    for (let r = 0; r < art.length; r++) {
+      for (let c = 0; c < art[r].length; c++) {
+        const ch = art[r][c];
+        if (ch === ".") continue;
+        g.fillStyle = season === "winter" ? P.cMid
+          : ch === "2" ? P.cLt : ch === "3" ? P.cDk : P.cMid;
+        g.fillRect(tx + c, ty + r, 1, 1);
+      }
+    }
+    if (season === "winter") {                       // snow sits ABOVE branches,
+      g.fillStyle = "#ffffff";                       // never thickening them
+      for (const [c, r] of [[4,0],[2,1],[6,1],[1,2],[7,2]]) g.fillRect(tx + c, ty + r - 1, 1, 1);
+    } else if (P.accent) {
+      for (let i = 0; i < 5; i++) {
+        g.fillStyle = P.accent;
+        g.fillRect(tx + 1 + ((hash2(i * 7, 2) * 7) | 0), ty + 1 + ((hash2(i * 11, 4) * 6) | 0), 1, 1);
+      }
+    }
+
+    landscape = cv; landscapeKey = key;
+  }
+
+  // --- weather particles ------------------------------------------------------
+  // Persistent objects, never re-randomised per frame: random placement each
+  // tick is the definition of television static, not rain.
+  const drops = [];
+  function ensureDrops(kind, windKph) {
+    const want = kind === "storm" ? 34 : kind === "rain" ? 20 : kind === "snow" ? 22 : 0;
+    while (drops.length > want) drops.pop();
+    while (drops.length < want) {
+      drops.push({x: Math.random() * WINDOW.w, y: Math.random() * WINDOW.h,
+                  layer: drops.length % 3, phase: Math.random() * 6.283});
+    }
+  }
+
+  const splashes = [];
+
+  function drawWeather(now, dt) {
+    const kind = weatherKind();
+    if (kind === "clear" || kind === "part" || kind === "cloud" || kind === "fog") {
+      drops.length = 0;
+      return;
+    }
+    const windMs = ((weather && weather.wind_kph) || 0) / 3.6;
+    ensureDrops(kind, windMs);
+    const snow = kind === "snow";
+    // Snow is ~9x lighter than rain, so the same wind skews it far further --
+    // that asymmetry is the strongest rain/snow cue after elongation.
+    const ang = Math.min(Math.atan2(windMs, snow ? 1.0 : 9.0), 0.7);
+    const sp = [0.55, 0.8, 1.05];
+
+    for (const d of drops) {
+      const speed = (snow ? 0.35 : 2.4) * sp[d.layer];
+      d.x += Math.sin(ang) * speed + (snow ? Math.sin(now / 900 + d.phase) * 0.20 : 0);
+      d.y += Math.cos(ang) * speed;
+      if (d.y > WINDOW.h) {
+        if (!snow) splashes.push({x: d.x, y: WINDOW.h - 1, t: 0});
+        d.y = -2; d.x = Math.random() * WINDOW.w;
+      }
+      if (d.x < -4) d.x += WINDOW.w + 8;
+      if (d.x > WINDOW.w + 4) d.x -= WINDOW.w + 8;
+
+      const px = (WINDOW.x + d.x) | 0, py = (WINDOW.y + d.y) | 0;
+      if (snow) {
+        ctx.fillStyle = d.layer === 2 ? "#ffffff" : "#c7dcd0";
+        ctx.fillRect(px, py, d.layer === 2 ? 2 : 1, d.layer === 2 ? 2 : 1);
+      } else {
+        // length rises with speed: streak = velocity x exposure, so they stay
+        // coupled and the rain reads as physical rather than as wallpaper
+        const len = Math.max(3, Math.round(speed * 1.9));
+        ctx.fillStyle = d.layer === 2 ? "#9fdcff" : d.layer === 1 ? "#7fb0e0" : "#5f8fb8";
+        for (let i = 0; i < len; i++) {
+          const sx = px - ((i * Math.tan(ang)) | 0), sy = py - i;
+          if (sy < WINDOW.y || sy >= WINDOW.y + WINDOW.h) continue;
+          ctx.fillRect(sx, sy, 1, 1);
         }
       }
     }
 
-    if (kind === "rain" || kind === "snow") {
-      const n = kind === "rain" ? 14 : 10;
-      for (let i = 0; i < n; i++) {
-        const speed = kind === "rain" ? 90 : 260;
-        const px = w.x + 1 + ((hash2(i * 29, 11) * (w.w - 2)) | 0);
-        const sway = kind === "snow" ? Math.round(Math.sin(now / 700 + i) * 1.5) : 0;
-        const py = w.y + ((now / speed + i * 5) % (w.h - 2)) | 0;
-        ctx.fillStyle = kind === "rain" ? C.rain : C.snow;
-        ctx.fillRect(px + sway, py + 1, 1, kind === "rain" ? 2 : 1);
+    // Impact splashes: the detail that convinces the eye there is a ground
+    // plane, which retroactively sells the streaks as falling toward it.
+    for (let i = splashes.length - 1; i >= 0; i--) {
+      const s2 = splashes[i];
+      s2.t += dt;
+      if (s2.t > 130) { splashes.splice(i, 1); continue; }
+      ctx.fillStyle = "#9fdcff";
+      const bx = (WINDOW.x + s2.x) | 0, by = WINDOW.y + s2.y;
+      if (s2.t < 65) ctx.fillRect(bx, by, 1, 1);
+      else { ctx.fillRect(bx - 1, by, 1, 1); ctx.fillRect(bx + 1, by, 1, 1); }
+    }
+  }
+
+  // --- lightning --------------------------------------------------------------
+  // Two excursions per event, ~180ms total, well under WCAG's three-flashes-per
+  // -second ceiling. The window is lit fully; the room only takes the spill,
+  // and the full-amplitude area stays far below the 87,296 CSS px threshold at
+  // any sane scale. Peak is a lift, never white -- this is a dashboard someone
+  // leaves open all day.
+  const FLASH = [[0, 1.0, 0.40], [17, 1.0, 0.40], [33, 0.45, 0.18],
+                 [133, 0.60, 0.24], [150, 0.25, 0.10]];
+  let nextStrike = 0, strikeAt = -1;
+  const reduceMotion = typeof matchMedia === "function" &&
+                       matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function lightning(now) {
+    if (weatherKind() !== "storm" || reduceMotion) return 0;
+    if (!nextStrike) nextStrike = now + 4000 + Math.random() * 12000;
+    if (now >= nextStrike) { strikeAt = now; nextStrike = now + 8000 + Math.random() * 17000; }
+    if (strikeAt < 0) return 0;
+    const t = now - strikeAt;
+    if (t > 200) { strikeAt = -1; return 0; }
+    let win = 0, room = 0;
+    for (const [at, w2, r2] of FLASH) if (t >= at && t < at + 17) { win = w2; room = r2; }
+    if (win > 0) {
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = win * 0.55; ctx.fillStyle = "#fdcbb0";
+      ctx.fillRect(WINDOW.x, WINDOW.y, WINDOW.w, WINDOW.h);
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+    }
+    return room;
+  }
+
+  function drawWindow(now, dt) {
+    const season = seasonNow(new Date()), night = isNight(), kind = weatherKind();
+    const key = season + "|" + night + "|" + kind;
+    if (key !== landscapeKey) bakeLandscape(key, season, night, kind);
+
+    ctx.fillStyle = C.frame;
+    ctx.fillRect(WINDOW.x - 3, WINDOW.y - 3, WINDOW.w + 6, WINDOW.h + 6);
+    ctx.drawImage(landscape, WINDOW.x, WINDOW.y);
+
+    // Clouds drift; it is the only ambient motion in fair weather and does more
+    // for "alive" than anything else. Whole pixels only.
+    if (kind !== "clear") {
+      const windMul = 1 + ((weather && weather.wind_kph) || 0) / 25;
+      ctx.fillStyle = kind === "fog" ? "#c7dcd0" : night ? "#3a4466" : C.cloud;
+      for (const [oy, cw, rate] of [[4, 22, 26], [11, 28, 15], [19, 18, 34]]) {
+        const drift = Math.floor(now / (rate / windMul)) % (WINDOW.w + 34);
+        for (let i = 0; i < cw; i++) {
+          const px = WINDOW.x + ((i + drift) % (WINDOW.w + 34)) - 17;
+          if (px < WINDOW.x || px >= WINDOW.x + WINDOW.w) continue;
+          ctx.fillRect(px, WINDOW.y + oy, 1, i === 0 || i === cw - 1 ? 1 : 2);
+        }
       }
     }
 
-    // glazing bars last, so everything sits behind the glass
-    ctx.fillStyle = C.frame;
-    ctx.fillRect(w.x + ((w.w / 2) | 0), w.y, 1, w.h);
-    ctx.fillRect(w.x, w.y + ((w.h / 2) | 0), w.w, 1);
-    if (weather && weather.stale) {   // say so rather than imply it is current
+    drawWeather(now, dt);
+    const spill = lightning(now);
+
+    ctx.fillStyle = C.frame;                       // glazing bars, over everything
+    ctx.fillRect(WINDOW.x + ((WINDOW.w / 2) | 0), WINDOW.y, 1, WINDOW.h);
+    ctx.fillRect(WINDOW.x, WINDOW.y + ((WINDOW.h / 2) | 0), WINDOW.w, 1);
+    ctx.fillStyle = C.wallCap;
+    ctx.fillRect(WINDOW.x - 3, WINDOW.y + WINDOW.h + 3, WINDOW.w + 6, 2);   // sill
+
+    if (spill > 0) {   // light entering the room, not the screen blinking
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = spill * 0.35; ctx.fillStyle = "#fdcbb0";
+      ctx.fillRect(WINDOW.x - 6, WALL_H, WINDOW.w + 12, 46);
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+    }
+    if (weather && weather.stale) {
       ctx.fillStyle = C.dim; ctx.font = "5px ui-monospace, monospace"; ctx.textAlign = "left";
-      ctx.fillText("?", w.x + w.w + 2, w.y + 6);
+      ctx.fillText("?", WINDOW.x + WINDOW.w + 5, WINDOW.y + 7);
     }
   }
 
@@ -680,14 +896,14 @@
 
   function drawPot(now) {
     const k = KITCHEN;
-    ctx.fillStyle = C.rackEdge; ctx.fillRect(k.x + 3, k.y + 6, 6, 2);
-    ctx.fillStyle = C.pot;      ctx.fillRect(k.x + 3, k.y + 7, 6, 4);
+    ctx.fillStyle = C.rackEdge; ctx.fillRect(k.x + 4, k.y + 8, 8, 2);
+    ctx.fillStyle = C.pot;      ctx.fillRect(k.x + 4, k.y + 9, 8, 5);
     // steam, only while something is on the hob
     ctx.fillStyle = C.steam; ctx.globalAlpha = 0.5;
     for (let i = 0; i < 3; i++) {
       const t = ((now / 620 + i * 0.33) % 1);
-      ctx.fillRect(k.x + 4 + i * 2 + Math.round(Math.sin(now / 400 + i) * 1),
-                   Math.round(k.y + 5 - t * 9), 1, 1);
+      ctx.fillRect(k.x + 5 + i * 2 + Math.round(Math.sin(now / 400 + i) * 1),
+                   Math.round(k.y + 7 - t * 11), 1, 1);
     }
     ctx.globalAlpha = 1;
   }
@@ -698,7 +914,7 @@
   function draw(now) {
     if (!bg) paintBackground();
     ctx.drawImage(bg, 0, 0);
-    drawWindow(now);
+    drawWindow(now, dtMs);
     if (fred.activity === "cook" && !walking) drawPot(now);
     nowMs = now;
     pendingGlow.length = 0;
@@ -837,10 +1053,14 @@
   // 30fps is ample for a slow-walking character and halves the cost of a widget
   // that is on all day.
   const MIN_DT = 1000 / 30;
-  let running = true, lastT = 0;
+  let running = true, lastT = 0, dtMs = 33;
   function frame(now) {
     requestAnimationFrame(frame);
     if (!running || now - lastT < MIN_DT) return;
+    // Derived from the rAF timestamp, not assumed: on a 144Hz display a fixed
+    // step would run the weather 2.4x too fast. Clamped so a backgrounded tab
+    // does not teleport every raindrop on return.
+    dtMs = Math.min(now - lastT, 120);
     lastT = now;
     if (A) A.engine.update();          // advance tweens exactly once, then draw
 
