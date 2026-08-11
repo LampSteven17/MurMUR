@@ -67,6 +67,8 @@
     skin1:"#b57a52", skin2:"#e0a578", skin3:"#f2c9a0", eyeLit:"#fdf3e6",
     shirt1:"#5e3a20", shirt2:"#8a5730", shirt3:"#b0764a",
     pant1:"#232840", pant2:"#343c5c", boot:"#15121f",
+    catA:"#3a2214", catB:"#a86534", catC:"#d9995a", catEye:"#9be36a",
+    ballA:"#d94f6a", ballB:"#f2899b", mess:"#6d5a3f",
     txt:"#c9d4e8", dim:"#5a6488", rug:"#2a2f47", rugLit:"#39405e",
     quilt:"#6e4450", pillow:"#a9bad9", bedFrame:"#4a3524", bedTop:"#6b4c33",
     rackEdge:"#0d0c14", rackTop:"#646d92", rackFace:"#343a55", rackLit:"#4a5273",
@@ -144,6 +146,7 @@
     C:C.shirt2, L:C.shirt3, c:C.shirt1,
     P:C.pant2, p:C.pant1, b:C.boot, k:C.ink,
     Q:C.quilt, q:C.cloth1, "-":C.ink,
+    a:C.catA, B:C.catB, e:C.catC, y:C.catEye,
   };
 
   function blit(rows, x, y, flip) {
@@ -1410,6 +1413,182 @@
   }
 
 
+  // --- the cat ---------------------------------------------------------------
+  // She has her own little state machine, deliberately separate from Fred's:
+  // she is not reacting to cluster events, she is just living here. The one
+  // place the two meet is the mess -- she puts something on the floor and he
+  // has to come and deal with it, which is the whole joke.
+  const CAT = {
+    // 14x9, facing right. Tail at the left, body in the middle, head clear of
+    // the body at the right -- the first pass overlapped head and body and she
+    // read as an orange loaf. Only the legs change between frames, which is all
+    // a cat this size needs to look like it is walking.
+    walkA: [
+      "..a.......a.a.","..a......aaaaa","..aa....aBByBa","...a...aBBBBBa",
+      "...aBBBBBBBBa.","..aBBBBBBBBBa.","..aeeeeeeeea..","...aa...aa....",
+      "...aa...aa....",
+    ],
+    walkB: [
+      "..a.......a.a.","..a......aaaaa","..aa....aBByBa","...a...aBBBBBa",
+      "...aBBBBBBBBa.","..aBBBBBBBBBa.","..aeeeeeeeea..","..aa.....aa...",
+      "..aa.....aa...",
+    ],
+    // Asleep. A curled cat is a comma with two ears on it.
+    curl: [
+      "..............","....a.a.......","...aaaaaa.....","..aBB--BBBa...",
+      "..aBBBBBBBBa..","..aeeBBBBBBa..","...aaeeeeeaa..",".....aaaaa....",
+      "..............",
+    ],
+    // Sat upright, tail curled round the feet.
+    sit: [
+      ".....a.a......","....aaaaa.....","....ayBya.....","....aBBBa.....",
+      "...aBBBBBa....","...aBBBBBa....","...aBBBBBaa...","...aeeeeeaa...",
+      "....aaaaa.....",
+    ],
+  };
+
+  const CAT_SPEED = 22;                      // px/sec, unhurried
+  const CAT_RUN   = 62;                      // ... except when the ball moves
+  const cat = {
+    x: 120, y: 250, dir: 1, state: "prowl", until: 0, tx: 120, ty: 250,
+    dist: 0, naps: 0,
+  };
+  // Where she is allowed to be: the studio floor and the near aisle, not inside
+  // the racks and not through the back wall.
+  const CAT_BOUNDS = {x0: 16, x1: 452, y0: 108, y1: 274};
+  const ball = {x: 90, y: 262, vx: 0, vy: 0};
+  let mess = null;                            // {x, y} once she has knocked one
+
+  // Things worth knocking over. These are where the item LANDS -- on the floor,
+  // clear of the piece it fell from. Using the item's own position put the
+  // spill on the desk's front face, so Fred knelt there scrubbing a vertical
+  // surface. Gravity applies to mugs.
+  function knockables() {
+    return [
+      {x: topPoint(DESK, 0.86, 0.25).x, y: DESK.y + DESK.h + 7, what: "mug"},
+      {x: PLANT.x - 8, y: PLANT.y + PLANT.h - 2, what: "plant"},
+    ];
+  }
+
+  function catPick() {
+    const r = Math.random();
+    if (mess) return "prowl";                 // she is not sorry, but she is busy
+    if (r < 0.30) return "play";
+    if (r < 0.48) return "nap";
+    if (r < 0.60) return "knock";
+    if (r < 0.75) return "sit";
+    return "prowl";
+  }
+
+  function catGo(x, y) {
+    cat.tx = Math.max(CAT_BOUNDS.x0, Math.min(CAT_BOUNDS.x1, x));
+    cat.ty = Math.max(CAT_BOUNDS.y0, Math.min(CAT_BOUNDS.y1, y));
+  }
+
+  function catEnter(state, now) {
+    cat.state = state;
+    if (state === "prowl") {
+      catGo(CAT_BOUNDS.x0 + Math.random() * (CAT_BOUNDS.x1 - CAT_BOUNDS.x0),
+            CAT_BOUNDS.y0 + Math.random() * (CAT_BOUNDS.y1 - CAT_BOUNDS.y0));
+      cat.until = now + 4000 + Math.random() * 5000;
+    } else if (state === "play") {
+      catGo(ball.x, ball.y);
+      cat.until = now + 9000 + Math.random() * 6000;
+    } else if (state === "nap") {
+      catGo(BED.x + 30 + Math.random() * 90, 250 + Math.random() * 20);
+      cat.until = now + 20000 + Math.random() * 25000;
+    } else if (state === "sit") {
+      cat.until = now + 5000 + Math.random() * 7000;
+    } else if (state === "knock") {
+      const k = knockables()[Math.floor(Math.random() * 2)];
+      cat.target = k;
+      catGo(k.x, k.y);
+      cat.until = now + 14000;
+    }
+  }
+
+  function catStep(dt, now) {
+    const dx = cat.tx - cat.x, dy = cat.ty - cat.y;
+    const d = Math.hypot(dx, dy);
+    const moving = (cat.state === "prowl" || cat.state === "play" || cat.state === "knock" ||
+                    (cat.state === "nap" && d > 2));
+    if (moving && d > 1.5) {
+      const sp = (cat.state === "play" ? CAT_RUN : CAT_SPEED) * dt / 1000;
+      const k = Math.min(1, sp / d);
+      cat.x += dx * k; cat.y += dy * k;
+      cat.dist += Math.abs(dx * k) + Math.abs(dy * k);
+      if (Math.abs(dx) > 0.4) cat.dir = dx > 0 ? 1 : -1;
+    }
+
+    if (cat.state === "play") {
+      catGo(ball.x, ball.y);                  // she tracks it as it rolls
+      if (d < 8 && Math.hypot(ball.vx, ball.vy) < 6) {
+        const a = Math.random() * Math.PI * 2;   // a swipe, not a kick
+        ball.vx = Math.cos(a) * (40 + Math.random() * 50);
+        ball.vy = Math.sin(a) * (22 + Math.random() * 26);
+      }
+    }
+    if (cat.state === "knock" && d < 6 && cat.target && !mess) {
+      mess = {x: cat.target.x, y: cat.target.y, what: cat.target.what};
+      cat.until = now;                        // job done, wander off
+    }
+    if (now > cat.until) catEnter(catPick(), now);
+  }
+
+  function ballStep(dt) {
+    const f = Math.pow(0.12, dt / 1000);       // exponential drag, frame-rate safe
+    ball.x += ball.vx * dt / 1000;
+    ball.y += ball.vy * dt / 1000;
+    ball.vx *= f; ball.vy *= f;
+    if (ball.x < CAT_BOUNDS.x0) { ball.x = CAT_BOUNDS.x0; ball.vx = -ball.vx * 0.6; }
+    if (ball.x > CAT_BOUNDS.x1) { ball.x = CAT_BOUNDS.x1; ball.vx = -ball.vx * 0.6; }
+    if (ball.y < CAT_BOUNDS.y0) { ball.y = CAT_BOUNDS.y0; ball.vy = -ball.vy * 0.6; }
+    if (ball.y > CAT_BOUNDS.y1) { ball.y = CAT_BOUNDS.y1; ball.vy = -ball.vy * 0.6; }
+  }
+
+  function drawCat(now) {
+    const x = Math.round(cat.x) - 7, y = Math.round(cat.y) - 8;
+    ctx.fillStyle = "rgba(11,10,16,.40)";
+    ctx.fillRect(Math.round(cat.x) - 5, Math.round(cat.y) - 1, 11, 2);
+    if (cat.state === "nap" && Math.hypot(cat.tx - cat.x, cat.ty - cat.y) < 3) {
+      blit(CAT.curl, x, y, cat.dir < 0);
+      if (Math.floor(now / 1100) % 2) {
+        ctx.fillStyle = C.dim; ctx.font = "5px ui-monospace, monospace";
+        ctx.textAlign = "left"; ctx.fillText("z", x + 13, y - 1);
+      }
+      return;
+    }
+    if (cat.state === "sit") { blit(CAT.sit, x, y, cat.dir < 0); return; }
+    // Distance-driven, same as Fred: time-driven legs slide when speed changes.
+    const f = (Math.floor(cat.dist / 5) & 1) ? CAT.walkB : CAT.walkA;
+    blit(f, x, y, cat.dir < 0);
+  }
+
+  function drawBall() {
+    const x = Math.round(ball.x), y = Math.round(ball.y);
+    ctx.fillStyle = C.ballA; ctx.fillRect(x - 2, y - 4, 4, 4);
+    ctx.fillStyle = C.ballB; ctx.fillRect(x - 1, y - 4, 2, 1);
+    ctx.fillStyle = "rgba(11,10,16,.35)"; ctx.fillRect(x - 2, y - 1, 4, 1);
+  }
+
+  function drawMess(now) {
+    if (!mess) return;
+    const x = Math.round(mess.x), y = Math.round(mess.y);
+    if (mess.what === "mug") {
+      ctx.fillStyle = C.wood3; ctx.fillRect(x - 2, y - 3, 5, 3);   // mug on its side
+      ctx.fillStyle = C.mess;  ctx.fillRect(x - 5, y, 12, 2);      // and the spill
+      ctx.fillRect(x - 3, y - 1, 7, 1);
+    } else {
+      ctx.fillStyle = C.wood2; ctx.fillRect(x - 3, y - 3, 7, 3);
+      ctx.fillStyle = C.mess;  ctx.fillRect(x - 6, y, 13, 2);      // soil
+      ctx.fillStyle = C.onDim; ctx.fillRect(x + 2, y - 2, 2, 2);
+    }
+    if (Math.floor(now / 700) % 2) {                                // a small marker
+      ctx.fillStyle = C.bad; ctx.fillRect(x, y - 7, 1, 3);
+      ctx.fillRect(x, y - 3, 1, 1);
+    }
+  }
+
   // --- fire, and the fighting of it -----------------------------------------
 
   // Two octaves of the stable hash: a slow one that makes the flame writhe and a
@@ -1589,6 +1768,10 @@
       const pr = PROPS[key];
       items.push({sortY: pr.P.y + pr.P.h, sortX: pr.P.x, prop: pr});
     }
+    items.push({sortY: cat.y, sortX: cat.x, cat: true});
+    items.push({sortY: ball.y, sortX: ball.x, ball: true});
+    if (mess) items.push({sortY: mess.y, sortX: mess.x, spill: true});
+
     const rider = onProp ? PROPS[onProp] : null;
     items.push({
       sortY: rider ? rider.P.y + rider.P.h : fred.y,
@@ -1597,6 +1780,9 @@
     items.sort((a, b) => (a.sortY - b.sortY) || (a.sortX - b.sortX));
 
     for (const it of items) {
+      if (it.cat)   { drawCat(now);  continue; }
+      if (it.ball)  { drawBall();    continue; }
+      if (it.spill) { drawMess(now); continue; }
       if (it.prop && !it.fred) {          // unoccupied: the halves just meet up
         it.prop.back(ctx);
         if (it.prop.front) it.prop.front(ctx);
@@ -1627,6 +1813,16 @@
       if (!walking && fred.activity === "read") {
         blit(SPR.side.slice(0, 22), fred.x - 9, fred.y - 22 + breath, fred.flip);
         drawBook(fred.x - 9, fred.y + breath, now);
+      } else if (!walking && fred.activity === "clean") {
+        // Crouched over it, scrubbing. The cloth is the only moving part.
+        const sweep = Math.floor(now / 220) % 2;
+        blit(SPR.side.slice(0, 21), fred.x - 9, fred.y - 19, fred.flip);
+        if (mess) {                       // the cloth works the spill, not his lap
+          ctx.fillStyle = C.cloth4;
+          ctx.fillRect(mess.x - 4 + sweep * 3, mess.y - 2, 6, 2);
+          ctx.fillStyle = C.cloth3;
+          ctx.fillRect(mess.x - 4 + sweep * 3, mess.y - 2, 6, 1);
+        }
       } else if (!walking && fred.activity === "cook") {
         const stir = Math.floor(now / 300) % 2;
         blit(SPR.up, fred.x - 9, fred.y - 27 - stir, false);
@@ -1734,7 +1930,7 @@
   // 30fps is ample for a slow-walking character and halves the cost of a widget
   // that is on all day.
   const MIN_DT = 1000 / 30;
-  let running = true, lastT = 0, dtMs = 33;
+  let running = true, lastT = 0, dtMs = 33, cleanUntil = 0;
   function frame(now) {
     requestAnimationFrame(frame);
     if (!running || now - lastT < MIN_DT) return;
@@ -1744,6 +1940,8 @@
     dtMs = Math.min(now - lastT, 120);
     lastT = now;
     if (A) A.engine.update();          // advance tweens exactly once, then draw
+    catStep(dtMs, now);
+    ballStep(dtMs);
 
     // Going to bed is latched rather than gated on !walking: the old form meant
     // that if a walk ever failed to signal completion -- a cancelled timeline,
@@ -1752,8 +1950,34 @@
     // Idle behaviour is re-decided against the clock, not latched once. Gating
     // this on "not asleep" meant that once he went to bed nothing ever
     // reconsidered, so he slept straight through the following day.
+    // A mess outranks the routine but not a fire: if a rack is alight he has
+    // bigger problems than the cat, and the spill can wait.
+    if (mess && !burning.size && !walking && fred.activity !== "clean") {
+      fred.say = ""; fred.asleep = false;
+      // Stamped on arrival, not on departure: closing over this frame's `now`
+      // charged the walk against his scrubbing time, so a long walk left him
+      // wiping for a fraction of a second.
+      // Beside it, not in front of it: standing directly below put his head
+      // over the spill. Which side depends on what else is there -- on the left
+      // of the room the stool sorts in front of him and swallows his legs, so
+      // he works from the open side and faces the mess.
+      const side = mess.x < 92 ? 1 : -1;
+      walk(mess.x + 13 * side, Math.min(mess.y + 9, BUNK.y + BUNK.h - 8), () => {
+        fred.flip = side > 0;
+        fred.activity = "clean";
+        cleanUntil = (window.performance ? performance.now() : now) + 5200;
+      });
+    } else if (fred.activity === "clean" && now > cleanUntil) {
+      mess = null;
+      // Must leave the clean state before walking away. Left as "clean" this
+      // branch re-fired every frame, restarting the walk, and he never arrived
+      // anywhere again.
+      fred.activity = "walk";
+      goIdle();
+    }
+
     const idle = Date.now() - fred.lastEvent;
-    if (idle > IDLE_MS && !walking) {
+    if (idle > IDLE_MS && !walking && fred.activity !== "clean" && !mess) {
       const want = routineFor(new Date());
       if (fred.activity !== want) {
         goIdle();
@@ -1897,7 +2121,17 @@
   };
 
   // test hook: age the idle clock without waiting it out in real time
-  if (typeof window !== 'undefined') window.__forceIdle = () => { fred.lastEvent = 0; };
+  if (typeof window !== 'undefined') {
+    window.__forceIdle = () => { fred.lastEvent = 0; };
+    // Read-only view of what everything thinks it is doing. Handy from a console
+    // when the room is misbehaving, and it is what the state harness polls.
+    window.__roomProbe = () => ({
+      fred: fred.activity, walking, asleep: fred.asleep,
+      cat: cat.state, mess: mess ? mess.what : null,
+      burning: burning.size,
+    });
+    window.__catKnock = () => { catEnter("knock", performance.now ? performance.now() : 0); };
+  }
   load().then(() => requestAnimationFrame(frame));
   setInterval(load, 60000);
 })();
