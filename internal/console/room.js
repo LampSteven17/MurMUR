@@ -149,7 +149,7 @@
   // --- room geometry -------------------------------------------------------
   const WALL_H = 70, FLOOR_B = 288;
   const BUNK = {x:9, y:76, w:154, h:206};
-  const BED  = {x:21, y:88, w:58, h:70};
+  const BED  = {x:22, y:90, w:42, h:54};
   const WINDOW  = {x:36, y:10, w:96, h:50};
   const KITCHEN = {x:100, y:88, w:56, h:44};
   const CHAIR   = {x:106, y:194, w:34, h:34};
@@ -162,7 +162,7 @@
   const GAPS = [183, 243, 312, 381, 447];
   const DOOR_X = BUNK.x + BUNK.w + 18;
   const SIGN  = {x:200, y:14, w:87, h:21};
-  const CLOCK = {x:370, y:18, w:60, h:30};
+  const CLOCK = {x:372, y:14, w:52, h:24};
 
   let racks = [];   // {node, x, base, guests:[{name,status}]}
   const leds = [];
@@ -288,10 +288,12 @@
 
     b.fillStyle = C.rackEdge; b.fillRect(CLOCK.x - 2, CLOCK.y - 2, CLOCK.w + 4, CLOCK.h + 4);
     b.fillStyle = C.bezel;    b.fillRect(CLOCK.x, CLOCK.y, CLOCK.w, CLOCK.h);
-    b.fillStyle = C.bezelTop; b.fillRect(CLOCK.x, CLOCK.y, CLOCK.w, 3);
+    b.fillStyle = C.bezelTop; b.fillRect(CLOCK.x, CLOCK.y, CLOCK.w, 2);
     b.fillStyle = C.stl1;     b.fillRect(CLOCK.x, CLOCK.y + CLOCK.h - 2, CLOCK.w, 2);
-    b.fillStyle = C.ink;      b.fillRect(CLOCK.x + 5, CLOCK.y + 8, CLOCK.w - 10, 14);
-    b.fillStyle = C.cable;    b.fillRect(CLOCK.x + CLOCK.w - 9, CLOCK.y + CLOCK.h + 2, 2, 8);
+    // display recessed with an even margin, so the digits are not floating in
+    // the top-left of an oversized panel
+    b.fillStyle = C.ink;      b.fillRect(CLOCK.x + 4, CLOCK.y + 4, CLOCK.w - 8, CLOCK.h - 8);
+    b.fillStyle = C.cable;    b.fillRect(CLOCK.x + CLOCK.w - 10, CLOCK.y + CLOCK.h + 2, 2, 9);
   }
 
   function studio(b) {
@@ -313,11 +315,15 @@
     b.fillStyle = C.wood2;    b.fillRect(BED.x, BED.y, BED.w, BED.h);
     b.fillStyle = C.wood4;    b.fillRect(BED.x, BED.y, BED.w, 3);
     b.fillStyle = C.wood3;    b.fillRect(BED.x + 2, BED.y + 3, BED.w - 4, BED.h - 9);
-    b.fillStyle = C.pillow;   b.fillRect(BED.x + 5, BED.y + 5, BED.w - 10, 12);
-    b.fillStyle = C.cloth4;   b.fillRect(BED.x + 5, BED.y + 5, BED.w - 10, 2);
-    b.fillStyle = C.quilt;    b.fillRect(BED.x + 3, BED.y + 20, BED.w - 6, BED.h - 26);
-    b.fillStyle = C.cloth3;   b.fillRect(BED.x + 3, BED.y + 20, BED.w - 6, 2);
-    b.fillStyle = C.cloth1;   b.fillRect(BED.x + 3, BED.y + BED.h - 8, BED.w - 6, 2);
+    b.fillStyle = C.pillow;   b.fillRect(BED.x + 4, BED.y + 4, BED.w - 8, 10);
+    b.fillStyle = C.cloth4;   b.fillRect(BED.x + 4, BED.y + 4, BED.w - 8, 2);
+    b.fillStyle = C.quilt;    b.fillRect(BED.x + 3, BED.y + 16, BED.w - 6, BED.h - 21);
+    b.fillStyle = C.cloth3;   b.fillRect(BED.x + 3, BED.y + 16, BED.w - 6, 2);
+    b.fillStyle = C.cloth1;   b.fillRect(BED.x + 3, BED.y + BED.h - 7, BED.w - 6, 2);
+    for (let i = 1; i < 4; i++) {   // quilt seams, so it is not one flat field
+      b.fillStyle = C.cloth1;
+      b.fillRect(BED.x + 3, BED.y + 16 + i * 8, BED.w - 6, 1);
+    }
 
     // kitchen: counter, two hobs with rings, a sink, a splashback
     b.fillStyle = C.rackEdge; b.fillRect(KITCHEN.x - 2, KITCHEN.y - 2, KITCHEN.w + 4, KITCHEN.h + 4);
@@ -336,20 +342,59 @@
     b.fillStyle = C.stl5; b.fillRect(KITCHEN.x + 46, KITCHEN.y + 6, 1, 6);   // tap
     b.fillRect(KITCHEN.x + 46, KITCHEN.y + 6, 4, 1);
     b.fillStyle = C.wall1; b.fillRect(KITCHEN.x + 3, KITCHEN.y + KITCHEN.h - 6, KITCHEN.w - 6, 1);
+    // cupboard doors under the counter, so the block is not one flat slab
+    for (const dx of [4, 22, 40]) {
+      b.fillStyle = C.counterTop; b.fillRect(KITCHEN.x + dx, KITCHEN.y + 30, 14, 11);
+      b.fillStyle = C.counter;    b.fillRect(KITCHEN.x + dx + 1, KITCHEN.y + 31, 12, 9);
+      b.fillStyle = C.counterLit; b.fillRect(KITCHEN.x + dx + 5, KITCHEN.y + 34, 4, 1);
+    }
+
+    // fridge: tall, its own body, freezer door on top and a long handle
+    const F = {x: KITCHEN.x + 2, y: KITCHEN.y + KITCHEN.h + 8, w: 24, h: 50};
+    b.fillStyle = C.rackEdge; b.fillRect(F.x - 2, F.y - 2, F.w + 4, F.h + 4);
+    b.fillStyle = C.stl3;     b.fillRect(F.x, F.y, F.w, F.h);
+    b.fillStyle = C.stl5;     b.fillRect(F.x, F.y, F.w, 3);
+    b.fillStyle = C.stl4;     b.fillRect(F.x, F.y + 3, 3, F.h - 3);
+    b.fillStyle = C.stl2;     b.fillRect(F.x + F.w - 3, F.y + 3, 3, F.h - 3);
+    b.fillStyle = C.stl1;     b.fillRect(F.x + 2, F.y + 17, F.w - 4, 2);   // door split
+    b.fillStyle = C.handle;
+    b.fillRect(F.x + F.w - 8, F.y + 8, 2, 7);
+    b.fillRect(F.x + F.w - 8, F.y + 23, 2, 22);
+    b.fillStyle = C.bad;  b.fillRect(F.x + 5, F.y + 6, 3, 2);              // a magnet
+    b.fillStyle = C.on;   b.fillRect(F.x + 10, F.y + 6, 3, 2);
+    b.fillStyle = C.wood5; b.fillRect(F.x + 6, F.y + 24, 8, 6);            // a note
+    b.fillStyle = C.stl1; b.fillRect(F.x + 2, F.y + F.h - 3, F.w - 4, 3);
 
     // desk + monitor + mug + chair
     const D = {x: BUNK.x + 12, y: BUNK.y + 118, w: 66, h: 30};
     b.fillStyle = C.rackEdge; b.fillRect(D.x - 2, D.y - 2, D.w + 4, D.h + 4);
     b.fillStyle = C.wood2;    b.fillRect(D.x, D.y, D.w, D.h);
     b.fillStyle = C.wood4;    b.fillRect(D.x, D.y, D.w, 4);
-    b.fillStyle = C.stl1;     b.fillRect(D.x + 12, D.y - 16, 27, 17);
-    b.fillStyle = C.stl3;     b.fillRect(D.x + 13, D.y - 15, 25, 15);
-    b.fillStyle = C.stl2;     b.fillRect(D.x + 22, D.y + 1, 7, 3);           // stand
-    b.fillStyle = C.wood5;    b.fillRect(D.x + 48, D.y + 10, 7, 8);          // mug
-    b.fillStyle = C.wood3;    b.fillRect(D.x + 55, D.y + 12, 2, 4);
-    b.fillStyle = C.chairA;   b.fillRect(D.x + 20, D.y + 34, 20, 15);
-    b.fillStyle = C.chairB;   b.fillRect(D.x + 22, D.y + 36, 16, 11);
-    TERMINAL = {x: D.x + 14, y: D.y - 14, w: 23, h: 13};
+    // monitor: outer shell, inset bezel, then the screen. The screen is inset
+    // on all four sides so it reads as recessed glass rather than a panel with
+    // a stripe above it.
+    const M = {x: D.x + 14, y: D.y - 22, w: 30, h: 21};
+    b.fillStyle = C.stl1; b.fillRect(M.x - 1, M.y - 1, M.w + 2, M.h + 2);
+    b.fillStyle = C.stl3; b.fillRect(M.x, M.y, M.w, M.h);
+    b.fillStyle = C.stl4; b.fillRect(M.x, M.y, M.w, 1);
+    b.fillStyle = C.stl2; b.fillRect(M.x, M.y + M.h - 3, M.w, 3);
+    b.fillStyle = C.ink;  b.fillRect(M.x + 3, M.y + 3, M.w - 6, M.h - 8);
+    b.fillStyle = C.on;   b.fillRect(M.x + M.w - 4, M.y + M.h - 2, 1, 1);   // power led
+    b.fillStyle = C.stl2; b.fillRect(M.x + 12, M.y + M.h, 6, 3);            // neck
+    b.fillStyle = C.stl4; b.fillRect(M.x + 8, M.y + M.h + 3, 14, 2);        // foot
+    // keyboard on the desk in front of it
+    b.fillStyle = C.stl2; b.fillRect(D.x + 16, D.y + 12, 26, 8);
+    b.fillStyle = C.stl4; b.fillRect(D.x + 16, D.y + 12, 26, 1);
+    b.fillStyle = C.stl1;
+    for (let r = 0; r < 3; r++)
+      for (let c = 0; c < 11; c++) b.fillRect(D.x + 18 + c * 2, D.y + 14 + r * 2, 1, 1);
+    b.fillStyle = C.wood5;    b.fillRect(D.x + 50, D.y + 11, 8, 9);          // mug
+    b.fillStyle = C.wood4;    b.fillRect(D.x + 51, D.y + 12, 6, 2);
+    b.fillStyle = C.wood3;    b.fillRect(D.x + 58, D.y + 13, 2, 5);
+    b.fillStyle = C.chairA;   b.fillRect(D.x + 20, D.y + 34, 22, 16);
+    b.fillStyle = C.chairB;   b.fillRect(D.x + 22, D.y + 36, 18, 12);
+    b.fillStyle = C.chairC;   b.fillRect(D.x + 22, D.y + 36, 18, 2);
+    TERMINAL = {x: M.x + 3, y: M.y + 3, w: M.w - 6, h: M.h - 8};
 
     // armchair, seen from behind: back, arms, cushion
     b.fillStyle = C.rackEdge; b.fillRect(CHAIR.x - 2, CHAIR.y - 2, CHAIR.w + 4, CHAIR.h + 4);
@@ -386,22 +431,38 @@
   }
 
   function lightPools(b) {
-    b.globalCompositeOperation = "lighter";
-    b.fillStyle = "#a8bce6";
-    const pool = (cx, cy, rx, ry) => {
-      for (let dy = -ry; dy <= ry; dy++) {
-        const k = 1 - (dy * dy) / (ry * ry);
-        if (k <= 0) continue;
-        const hw = Math.round(rx * Math.sqrt(k));
-        b.globalAlpha = 0.075 * k * k;
-        b.fillRect(Math.round(cx - hw), Math.round(cy + dy), hw * 2, 1);
+    // Soft overhead throw, not hard ellipses. The previous version banded badly:
+    // a per-scanline ellipse with a squared falloff still ends on a visible
+    // edge, and at this size that edge reads as a shape on the floor rather
+    // than as light. This uses a real radial gradient and a dithered outer
+    // fringe so the last few percent dissolves into the floor texture.
+    const pool = (cx, cy, rx, ry, peak) => {
+      b.save();
+      b.translate(cx, cy);
+      b.scale(1, ry / rx);
+      const grad = b.createRadialGradient(0, 0, 0, 0, 0, rx);
+      grad.addColorStop(0.00, "rgba(168,188,230," + peak + ")");
+      grad.addColorStop(0.45, "rgba(168,188,230," + (peak * 0.45).toFixed(3) + ")");
+      grad.addColorStop(0.78, "rgba(168,188,230," + (peak * 0.12).toFixed(3) + ")");
+      grad.addColorStop(1.00, "rgba(168,188,230,0)");
+      b.fillStyle = grad;
+      b.beginPath(); b.arc(0, 0, rx, 0, Math.PI * 2); b.fill();
+      b.restore();
+      // dither the fringe so any residual banding breaks up on the pixel grid
+      b.fillStyle = "rgba(168,188,230,0.028)";
+      for (let i = 0; i < 40; i++) {
+        const t = 0.88 + hash2(cx + i, cy) * 0.10;
+        const a = (i / 40) * Math.PI * 2;
+        const px = Math.round(cx + Math.cos(a) * rx * t);
+        const py = Math.round(cy + Math.sin(a) * ry * t);
+        if ((px + py) % 2 === 0) b.fillRect(px, py, 1, 1);
       }
     };
-    pool(264, AISLE_MAIN - 6, 108, 28);
-    pool(393, AISLE_MAIN - 6, 87, 25);
-    pool(309, AISLE_FRONT - 3, 126, 27);
-    pool(BUNK.x + 54, BUNK.y + 138, 57, 24);
-    b.globalAlpha = 1; b.globalCompositeOperation = "source-over";
+    // one per ceiling fitting, so the pools line up with the aisles
+    pool(264, AISLE_MAIN - 8, 96, 26, 0.10);
+    pool(393, AISLE_MAIN - 8, 84, 24, 0.09);
+    pool(309, AISLE_FRONT - 4, 112, 26, 0.09);
+    pool(BUNK.x + 56, BUNK.y + 132, 62, 22, 0.08);
   }
 
   function drawRack(r) {
@@ -531,20 +592,29 @@
     const d = new Date();
     const hh = String(d.getHours()).padStart(2, "0");
     const mm = String(d.getMinutes()).padStart(2, "0");
-    const x = CLOCK.x + 5, y = CLOCK.y + 7;
-    // dim ghost segments, so the unlit parts of the display still read as a display
-    for (let i = 0; i < 4; i++) glyphAt(DIGIT, "8", x + i * 4 + (i > 1 ? 3 : 0), y, C.ledDim);
-    glyphAt(DIGIT, hh[0], x, y, C.ledOn);
-    glyphAt(DIGIT, hh[1], x + 4, y, C.ledOn);
-    glyphAt(DIGIT, mm[0], x + 11, y, C.ledOn);
-    glyphAt(DIGIT, mm[1], x + 15, y, C.ledOn);
-    // colon on the seconds, which is the only thing that says it is running
+    // digits are 3 wide at 2x with 2px gaps, plus a 4px colon: measure it and
+    // centre the block in the display rather than guessing an offset
+    const DW = 6, GAP = 2, COLON = 5;
+    const total = DW * 4 + GAP * 3 + COLON;
+    const x = CLOCK.x + Math.round((CLOCK.w - total) / 2);
+    const y = CLOCK.y + Math.round((CLOCK.h - 10) / 2);
+    const cols = [x, x + DW + GAP, x + (DW + GAP) * 2 + COLON, x + (DW + GAP) * 3 + COLON];
+    const big = (map, ch, gx, colour) => {
+      const g = map[ch]; if (!g) return;
+      ctx.fillStyle = colour;
+      for (let r = 0; r < 5; r++)
+        for (let c = 0; c < 3; c++)
+          if (g[r][c] === "#") ctx.fillRect(gx + c * 2, y + r * 2, 2, 2);
+    };
+    for (const gx of cols) big(DIGIT, "8", gx, C.ledDim);   // unlit segments
+    big(DIGIT, hh[0], cols[0], C.ledOn); big(DIGIT, hh[1], cols[1], C.ledOn);
+    big(DIGIT, mm[0], cols[2], C.ledOn); big(DIGIT, mm[1], cols[3], C.ledOn);
+    const cx = x + (DW + GAP) * 2 + 1;
     ctx.fillStyle = d.getSeconds() % 2 ? C.ledDim : C.ledOn;
-    ctx.fillRect(x + 9, y + 1, 1, 1);
-    ctx.fillRect(x + 9, y + 3, 1, 1);
+    ctx.fillRect(cx, y + 2, 2, 2); ctx.fillRect(cx, y + 6, 2, 2);
     ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = 0.08; ctx.fillStyle = C.ledOn;
-    ctx.fillRect(CLOCK.x + 2, CLOCK.y + 4, CLOCK.w - 4, 11);
+    ctx.globalAlpha = 0.07; ctx.fillStyle = C.ledOn;
+    ctx.fillRect(CLOCK.x + 4, CLOCK.y + 4, CLOCK.w - 8, CLOCK.h - 8);
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
   }
 
@@ -843,7 +913,7 @@
   // "type" | "fight". The activity survives arrival, so he keeps doing the thing
   // until something else happens or the idle timer sends him to bed.
   const fred = {
-    x: BED.x + 18, y: BED.y + 46, dir: "down", flip: false,
+    x: BED.x + 14, y: BED.y + 38, dir: "down", flip: false,
     dist: 0, asleep: true, activity: "sleep", say: "", sayUntil: 0,
     lastEvent: Date.now(),
   };
@@ -923,7 +993,7 @@
 
   function goSleep() {
     fred.say = "";
-    walk(BED.x + 18, BED.y + 46, null);
+    walk(BED.x + 14, BED.y + 38, null);
     if (tl) tl.call(() => { fred.asleep = true; fred.activity = "sleep"; });
     else { fred.asleep = true; }
   }
@@ -945,7 +1015,7 @@
   }
 
   const ROUTINE_SPOT = {
-    sleep: () => ({x: BED.x + 18, y: BED.y + 46}),
+    sleep: () => ({x: BED.x + 14, y: BED.y + 38}),
     type:  () => ({x: DESK_SEAT.x, y: DESK_SEAT.y}),
     cook:  () => ({x: COOK_SPOT.x, y: COOK_SPOT.y}),
     read:  () => ({x: READ_SPOT.x, y: READ_SPOT.y}),
@@ -1019,14 +1089,14 @@
     // y-sort by baseline, so Fred passes behind the back row and in front of
     // the front row with no special-casing anywhere.
     const items = racks.map(r => ({sortY: r.base, sortX: r.x, r}));
-    items.push({sortY: fred.asleep ? BED.y + 22 : fred.y, sortX: fred.x, fred: true});
+    items.push({sortY: fred.asleep ? BED.y + 15 : fred.y, sortX: fred.x, fred: true});
     items.sort((a, b) => (a.sortY - b.sortY) || (a.sortX - b.sortX));
 
     for (const it of items) {
       if (!it.fred) { drawRack(it.r); continue; }
       if (fred.asleep) {
         const rise = Math.floor(now / 1000) % 2 ? -1 : 0;
-        blit(SLEEP, BED.x + 8, BED.y + 22 + rise, false);
+        blit(SLEEP, BED.x + 5, BED.y + 15 + rise, false);
         continue;
       }
       ctx.fillStyle = "rgba(11,10,16,.45)";
