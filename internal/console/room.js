@@ -412,30 +412,43 @@
   }
 
   function signHardware(b) {
-    b.fillStyle = C.tube;
-    b.fillRect(SIGN.x - 3, SIGN.y - 2, SIGN.w + 6, SIGN.h + 3);
-    b.fillStyle = C.stl2; b.fillRect(SIGN.x - 3, SIGN.y - 2, SIGN.w + 6, 2);
-    b.fillStyle = C.cableLit; b.fillRect(SIGN.x - 6, SIGN.y - 5, SIGN.w + 12, 3);
-    b.fillStyle = C.cable;
-    b.fillRect(SIGN.x - 6, SIGN.y - 5, 3, 6);
-    b.fillRect(SIGN.x + SIGN.w + 3, SIGN.y - 5, 3, 6);
+    // No backing panel. A neon sign is glass tubes on standoffs -- a filled box
+    // behind them is what made this read as a lightbox with letters printed on
+    // it. What is left is the hardware that would actually be there: a mounting
+    // rail, the standoffs, a transformer, and the conduit between them.
+    b.fillStyle = C.stl2; b.fillRect(SIGN.x - 4, SIGN.y - 7, SIGN.w + 8, 2);
+    b.fillStyle = C.stl4; b.fillRect(SIGN.x - 4, SIGN.y - 7, SIGN.w + 8, 1);
+    b.fillStyle = C.stl1;
+    for (const sx of [SIGN.x - 2, SIGN.x + SIGN.w]) b.fillRect(sx, SIGN.y - 5, 2, 6);
 
-    const drape = (x0, x1, sag, cut) => {
+    // Transformer box, hung off the left end, with its own tired little LED.
+    const TB = {x: SIGN.x - 14, y: SIGN.y + 2, w: 11, h: 13};
+    b.fillStyle = C.stl1; b.fillRect(TB.x, TB.y, TB.w, TB.h);
+    b.fillStyle = C.stl3; b.fillRect(TB.x, TB.y, TB.w, 1);
+    b.fillStyle = C.ink;  b.fillRect(TB.x + 2, TB.y + 3, TB.w - 4, 5);
+    b.fillStyle = C.cable;
+    b.fillRect(TB.x + TB.w, TB.y + 4, 5, 1);          // conduit into the tubes
+    b.fillRect(TB.x + 4, TB.y - 7, 1, 7);             // feed up to the rail
+
+    // Wires hanging off the bottom rail: 1px, because a 3px cable at this size
+    // reads as a pipe. One of them is cut.
+    const droop = (x0, x1, sag, cut) => {
       const span = x1 - x0;
       for (let i = 0; i <= span; i++) {
         const t = i / span;
-        const yy = SIGN.y + SIGN.h + Math.round(Math.sin(t * Math.PI) * sag);
-        b.fillStyle = C.cable; b.fillRect(x0 + i, yy, 1, 3);
-        if (i % 9 === 4) { b.fillStyle = C.cableLit; b.fillRect(x0 + i, yy, 1, 1); }
-        if (i === span && cut) {
-          b.fillStyle = C.cable;
-          for (let k = 1; k <= 9; k++) b.fillRect(x0 + span + (k > 5 ? 1 : 0), yy + k, 1, 1);
-          b.fillStyle = C.bad; b.fillRect(x0 + span + 1, yy + 10, 2, 2);   // bare copper
-        }
+        const yy = SIGN.y + SIGN.h + 1 + Math.round(Math.sin(t * Math.PI) * sag);
+        b.fillStyle = C.cable; b.fillRect(x0 + i, yy, 1, 2);
+        if (i % 11 === 5) { b.fillStyle = C.stl1; b.fillRect(x0 + i, yy - 1, 1, 4); }  // tape
+      }
+      if (cut) {
+        const yy = SIGN.y + SIGN.h + 1;
+        b.fillStyle = C.cable;
+        for (let k = 1; k <= 9; k++) b.fillRect(x1 + (k > 5 ? 1 : 0), yy + k, 1, 1);
+        b.fillStyle = C.bad; b.fillRect(x1 + 1, yy + 10, 2, 2);   // bare copper
       }
     };
-    drape(SIGN.x + 6, SIGN.x + 39, 10, false);
-    drape(SIGN.x + 45, SIGN.x + 72, 7, true);
+    droop(SIGN.x + 8, SIGN.x + 38, 9, false);
+    droop(SIGN.x + 46, SIGN.x + 71, 6, true);
 
     b.fillStyle = C.rackEdge; b.fillRect(CLOCK.x - 2, CLOCK.y - 2, CLOCK.w + 4, CLOCK.h + 4);
     b.fillStyle = C.bezel;    b.fillRect(CLOCK.x, CLOCK.y, CLOCK.w, CLOCK.h);
@@ -705,15 +718,6 @@
   }
 
   // --- wall fittings ----------------------------------------------------------
-  // A 3x5 stroke font. Anything smaller stops being letters, anything larger
-  // does not fit the wall above the racks.
-  const GLYPH = {
-    T:["###",".#.",".#.",".#.",".#."], H:["#.#","#.#","###","#.#","#.#"],
-    E:["###","#..","##.","#..","###"], L:["#..","#..","#..","#..","###"],
-    I:["###",".#.",".#.",".#.","###"], G:[".##","#..","#.#","#.#",".##"],
-    A:[".#.","#.#","###","#.#","#.#"], B:["##.","#.#","##.","#.#","##."],
-    " ":["...","...","...","...","..."],
-  };
   const DIGIT = {
     "0":["###","#.#","#.#","#.#","###"], "1":["..#","..#","..#","..#","..#"],
     "2":["###","..#","###","#..","###"], "3":["###","..#","###","..#","###"],
@@ -721,56 +725,120 @@
     "6":["###","#..","###","#.#","###"], "7":["###","..#","..#","..#","..#"],
     "8":["###","#.#","###","#.#","###"], "9":["###","#.#","###","..#","###"],
   };
+  // --- neon ------------------------------------------------------------------
+  // 5x7 with 1px strokes: a tube has a constant bore, so every stroke is one
+  // pixel and the weight comes entirely from the glow around it. The old 3x5
+  // blocks had no room for a counter in B or G, which is why they read as
+  // stamped letters rather than bent glass.
+  const NEON_GLYPH = {
+    T: ["#####","..#..","..#..","..#..","..#..","..#..","..#.."],
+    H: ["#...#","#...#","#...#","#####","#...#","#...#","#...#"],
+    E: ["#####","#....","#....","####.","#....","#....","#####"],
+    L: ["#....","#....","#....","#....","#....","#....","#####"],
+    I: ["#####","..#..","..#..","..#..","..#..","..#..","#####"],
+    G: [".###.","#...#","#....","#..##","#...#","#...#",".###."],
+    A: [".###.","#...#","#...#","#####","#...#","#...#","#...#"],
+    B: ["####.","#...#","#...#","####.","#...#","#...#","####."],
+  };
+  const NEON = {glow:"#ff3ba8", tube:"#ff7ad4", core:"#fff0fb", dead:"#4a3a56"};
+  const NPAD = 4, NW = 5, NH = 7, NADV = 7, NSPACE = 4;   // 2px between tubes
   const SIGN_TEXT = "THE LIGHT LAB";
-  // Which letters have given up. Index into SIGN_TEXT: the second L is dead
-  // outright, the I and the final B stutter.
+  // Which tubes have given up. The second L is dead outright; the I and the
+  // final B stutter.
   const DEAD = new Set([10]);
   const FLICKER = new Set([5, 12]);
 
-  function glyphAt(map, ch, x, y, colour) {
-    const g = map[ch];
-    if (!g) return;
-    ctx.fillStyle = colour;
-    for (let r = 0; r < 5; r++)
-      for (let c = 0; c < 3; c++)
-        if (g[r][c] === "#") ctx.fillRect(x + c, y + r, 1, 1);
+  // Each glyph is baked once: halo, then tube, then hot core. Per-frame this is
+  // one drawImage at an alpha instead of ~500 fillRects, which is what makes a
+  // real glow affordable at all.
+  const neonCache = new Map();
+  function bakeNeon(ch) {
+    if (neonCache.has(ch)) return neonCache.get(ch);
+    const rows = NEON_GLYPH[ch];
+    const w = NW + NPAD * 2, h = NH + NPAD * 2;
+    const mk = () => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
+    const lit = mk(), dead = mk();
+    const on = [];
+    for (let r = 0; r < NH; r++)
+      for (let c = 0; c < NW; c++)
+        if (rows[r][c] === "#") on.push([c + NPAD, r + NPAD]);
+
+    // Diamonds, not squares. Square halos from adjacent strokes tile into one
+    // solid block, which floods the counters of B and G and turns a word into a
+    // slab -- the falloff has to be shorter on the diagonal.
+    const diamond = (g, x, y, rad) => {
+      for (let dy = -rad; dy <= rad; dy++) {
+        const wd = rad - Math.abs(dy);
+        g.fillRect(x - wd, y + dy, wd * 2 + 1, 1);
+      }
+    };
+
+    const gl = lit.getContext("2d");
+    // Additive halo: overlapping falloffs pool light, so the inside of a letter
+    // glows harder than its outside. That gradient is the whole effect.
+    gl.globalCompositeOperation = "lighter";
+    gl.fillStyle = NEON.glow;
+    for (const [rad, al] of [[4, 0.030], [3, 0.040], [2, 0.055], [1, 0.085]]) {
+      gl.globalAlpha = al;
+      for (const [x, y] of on) diamond(gl, x, y, rad);
+    }
+    gl.globalAlpha = 0.22; gl.fillStyle = NEON.tube;    // bloom right at the glass
+    for (const [x, y] of on) diamond(gl, x, y, 1);
+    gl.globalCompositeOperation = "source-over";
+    gl.globalAlpha = 1; gl.fillStyle = NEON.core;       // the tube itself
+    for (const [x, y] of on) gl.fillRect(x, y, 1, 1);
+
+    const gd = dead.getContext("2d");                   // unlit glass, still there
+    gd.fillStyle = NEON.dead;
+    for (const [x, y] of on) gd.fillRect(x, y, 1, 1);
+
+    const out = {lit, dead};
+    neonCache.set(ch, out);
+    return out;
   }
 
-  // Deterministic stutter: a dying tube has a rhythm, not a coin flip per frame.
-  function tubeLit(i, now) {
-    if (DEAD.has(i)) return false;
-    if (!FLICKER.has(i)) return true;
-    const t = Math.floor(now / 90) + i * 13;
-    return hash2(i * 97, t) > 0.28;
+  // How hard each tube is burning, 0..1. Not a per-frame coin flip: a failing
+  // tube stutters in bursts and a dead one keeps trying to strike, which is
+  // what makes it read as broken rather than simply absent.
+  function tubeLevel(i, now) {
+    if (DEAD.has(i)) {
+      const win = Math.floor(now / 3300) + i * 7;
+      if (hash2(i * 131, win) > 0.92) return hash2(i * 17, Math.floor(now / 70)) * 0.4;
+      return 0;
+    }
+    const hum = 0.88 + 0.12 * Math.sin(now / 620 + i);   // mains ripple
+    if (!FLICKER.has(i)) return hum;
+    const burst = Math.floor(now / 2600) + i * 13;
+    if (hash2(i * 97, burst) > 0.58) {
+      return hash2(i * 41, Math.floor(now / 55)) > 0.42 ? hum : 0.05;
+    }
+    return hum;
+  }
+
+  function signTextWidth() {
+    let w = 0;
+    for (const ch of SIGN_TEXT) w += ch === " " ? NSPACE : NADV;
+    return w - (SIGN_TEXT[SIGN_TEXT.length - 1] === " " ? NSPACE : NADV - NW);
   }
 
   function drawSign(now) {
-    let x = SIGN.x + 2;
-    const y = SIGN.y + 5;
-    // glow first, so the tubes sit inside their own halo
-    ctx.globalCompositeOperation = "lighter";
+    let x = SIGN.x + Math.round((SIGN.w - signTextWidth()) / 2);
+    const y = SIGN.y + Math.round((SIGN.h - NH) / 2);
     for (let i = 0; i < SIGN_TEXT.length; i++) {
       const ch = SIGN_TEXT[i];
-      if (ch !== " " && tubeLit(i, now)) {
-        ctx.globalAlpha = 0.10; ctx.fillStyle = C.neonHot;
-        ctx.fillRect(x - 2, y - 2, 7, 9);
+      if (ch === " ") { x += NSPACE; continue; }
+      const g = bakeNeon(ch);
+      const lvl = tubeLevel(i, now);
+      // Unlit glass first, so a stuttering tube still has a body between blinks.
+      ctx.drawImage(g.dead, x - NPAD, y - NPAD);
+      if (lvl > 0.02) {
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = Math.min(1, lvl);
+        ctx.drawImage(g.lit, x - NPAD, y - NPAD);
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = "source-over";
       }
-      x += ch === " " ? 2 : 4;
-    }
-    ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
-
-    x = SIGN.x + 2;
-    for (let i = 0; i < SIGN_TEXT.length; i++) {
-      const ch = SIGN_TEXT[i];
-      if (ch !== " ") {
-        const lit = tubeLit(i, now);
-        glyphAt(GLYPH, ch, x, y, lit ? C.neonCore : C.neonDead);
-        if (lit) {   // hot core, one pixel in, is what makes it read as neon
-          ctx.fillStyle = C.neonHot;
-          ctx.fillRect(x + 1, y + 2, 1, 1);
-        }
-      }
-      x += ch === " " ? 2 : 4;
+      x += NADV;
     }
   }
 
