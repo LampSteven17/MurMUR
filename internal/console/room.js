@@ -149,11 +149,15 @@
   // --- room geometry -------------------------------------------------------
   const WALL_H = 70, FLOOR_B = 288;
   const BUNK = {x:9, y:76, w:154, h:206};
-  const BED  = {x:22, y:90, w:42, h:54};
+  // Studio interior is x 9..163, y 76..282. Everything below is placed against a
+  // wall with a clear gap to its neighbours -- the previous pass had the shelf
+  // sitting inside the desk.
+  const BED   = {x:14,  y:84,  w:42, h:54};   // top-left corner
+  const DESK  = {x:34,  y:206, w:70, h:30};   // bottom-left, clear of the shelf
   const WINDOW  = {x:36, y:10, w:96, h:50};
-  const KITCHEN = {x:100, y:88, w:56, h:44};
-  const CHAIR   = {x:106, y:194, w:34, h:34};
-  const SHELF   = {x:18, y:170, w:13, h:42};
+  const KITCHEN = {x:96, y:84, w:62, h:42};   // top-right, against both walls
+  const CHAIR   = {x:118, y:206, w:34, h:34}; // bottom-right
+  const SHELF   = {x:14,  y:150, w:14, h:46}; // left wall, between bed and desk
   const DOOR = {y0:238, y1:280};
   const RACK_W = 27, RACK_H = 48, TOP_H = 9;
   const ROW_A_Y = 156, ROW_B_Y = 252;
@@ -248,11 +252,21 @@
 
     // --- cable runs snaking between the rack rows, Noita-ish clutter that also
     // happens to be what a real floor like this looks like
-    b.fillStyle = C.stl1;
-    for (const [y0, x0, x1] of [[AISLE_MAIN + 12, 190, 430], [AISLE_FRONT + 6, 210, 400]]) {
+    // Floor looms, laid in the AISLES. The previous run sat at AISLE_MAIN + 12,
+    // which is exactly the top edge of the back row, so it drew a hard line
+    // across the racks instead of a cable on the ground.
+    for (const [y0, x0, x1] of [[ROW_A_Y + 26, 200, 424], [ROW_B_Y + 22, 214, 400]]) {
       for (let x = x0; x < x1; x++) {
-        b.fillRect(x, y0 + Math.round(Math.sin(x / 17) * 3), 1, 2);
+        const yy = y0 + Math.round(Math.sin(x / 21) * 4);
+        b.fillStyle = C.ink;  b.fillRect(x, yy, 1, 4);
+        // A continuous highlight made these read as pale lines once the light
+        // pools brightened them. Broken into occasional glints instead.
+        if (x % 11 === 0) { b.fillStyle = C.stl2; b.fillRect(x, yy, 1, 1); }
       }
+      b.fillStyle = C.stl2;                              // a junction box on the run
+      b.fillRect(x0 + 60, y0 + Math.round(Math.sin((x0 + 60) / 21) * 4) - 2, 9, 7);
+      b.fillStyle = C.stl4;
+      b.fillRect(x0 + 60, y0 + Math.round(Math.sin((x0 + 60) / 21) * 4) - 2, 9, 1);
     }
 
     signHardware(b);
@@ -350,7 +364,7 @@
     }
 
     // fridge: tall, its own body, freezer door on top and a long handle
-    const F = {x: KITCHEN.x + 2, y: KITCHEN.y + KITCHEN.h + 8, w: 24, h: 50};
+    const F = {x: 134, y: KITCHEN.y + KITCHEN.h + 8, w: 24, h: 52};   // right wall
     b.fillStyle = C.rackEdge; b.fillRect(F.x - 2, F.y - 2, F.w + 4, F.h + 4);
     b.fillStyle = C.stl3;     b.fillRect(F.x, F.y, F.w, F.h);
     b.fillStyle = C.stl5;     b.fillRect(F.x, F.y, F.w, 3);
@@ -366,7 +380,7 @@
     b.fillStyle = C.stl1; b.fillRect(F.x + 2, F.y + F.h - 3, F.w - 4, 3);
 
     // desk + monitor + mug + chair
-    const D = {x: BUNK.x + 12, y: BUNK.y + 118, w: 66, h: 30};
+    const D = DESK;
     b.fillStyle = C.rackEdge; b.fillRect(D.x - 2, D.y - 2, D.w + 4, D.h + 4);
     b.fillStyle = C.wood2;    b.fillRect(D.x, D.y, D.w, D.h);
     b.fillStyle = C.wood4;    b.fillRect(D.x, D.y, D.w, 4);
@@ -418,13 +432,14 @@
     }
 
     // a plant, because every lived-in room has one
-    b.fillStyle = C.wood2; b.fillRect(BUNK.x + 128, BUNK.y + 168, 14, 12);
-    b.fillStyle = C.wood4; b.fillRect(BUNK.x + 128, BUNK.y + 168, 14, 2);
+    const PL = {x: 100, y: 252};
+    b.fillStyle = C.wood2; b.fillRect(PL.x, PL.y, 15, 13);
+    b.fillStyle = C.wood4; b.fillRect(PL.x, PL.y, 15, 2);
     b.fillStyle = C.onDim;
     for (const [dx, dy] of [[2,-8],[5,-13],[8,-9],[11,-6],[6,-6],[9,-14]])
-      b.fillRect(BUNK.x + 128 + dx, BUNK.y + 168 + dy, 3, 3);
+      b.fillRect(PL.x + dx, PL.y + dy, 3, 3);
     b.fillStyle = C.on;
-    for (const [dx, dy] of [[5,-13],[9,-14]]) b.fillRect(BUNK.x + 128 + dx, BUNK.y + 168 + dy, 2, 2);
+    for (const [dx, dy] of [[5,-13],[9,-14]]) b.fillRect(PL.x + dx, PL.y + dy, 2, 2);
 
     b.fillStyle = C.dim; b.font = "7px ui-monospace, monospace"; b.textAlign = "left";
     b.fillText("bunk", BUNK.x + 6, BUNK.y + BUNK.h - 7);
@@ -913,13 +928,13 @@
   // "type" | "fight". The activity survives arrival, so he keeps doing the thing
   // until something else happens or the idle timer sends him to bed.
   const fred = {
-    x: BED.x + 14, y: BED.y + 38, dir: "down", flip: false,
+    x: BED.x + 21, y: BED.y + 40, dir: "down", flip: false,
     dist: 0, asleep: true, activity: "sleep", say: "", sayUntil: 0,
     lastEvent: Date.now(),
   };
-  const DESK_SEAT = {x: BUNK.x + 42, y: BUNK.y + 166};  // in front of the desk chair
-  const COOK_SPOT = {x: KITCHEN.x + 14, y: KITCHEN.y + KITCHEN.h + 20};
-  const READ_SPOT = {x: CHAIR.x + 17, y: CHAIR.y + CHAIR.h + 4};
+  const DESK_SEAT = {x: DESK.x + 31, y: DESK.y + 54};   // in front of the desk chair
+  const COOK_SPOT = {x: KITCHEN.x + 22, y: KITCHEN.y + KITCHEN.h + 22};
+  const READ_SPOT = {x: CHAIR.x + 17, y: CHAIR.y + CHAIR.h + 6};
   let unacked = 0, tl = null, walking = false;
   // A rack burns while it has an unacked escalation -- which is what "that
   // server is on fire" actually means. Cleared by an ack or an all-clear.
@@ -993,7 +1008,7 @@
 
   function goSleep() {
     fred.say = "";
-    walk(BED.x + 14, BED.y + 38, null);
+    walk(BED.x + 21, BED.y + 40, null);
     if (tl) tl.call(() => { fred.asleep = true; fred.activity = "sleep"; });
     else { fred.asleep = true; }
   }
@@ -1015,7 +1030,7 @@
   }
 
   const ROUTINE_SPOT = {
-    sleep: () => ({x: BED.x + 14, y: BED.y + 38}),
+    sleep: () => ({x: BED.x + 21, y: BED.y + 40}),
     type:  () => ({x: DESK_SEAT.x, y: DESK_SEAT.y}),
     cook:  () => ({x: COOK_SPOT.x, y: COOK_SPOT.y}),
     read:  () => ({x: READ_SPOT.x, y: READ_SPOT.y}),
