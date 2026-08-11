@@ -57,6 +57,8 @@
     skyDay:"#6f9fd0", skyDusk:"#8a6a8c", skyNight:"#141d33",
     sun:"#ffe9a8", moon:"#dfe6f2", star:"#c0cbdc", cloud:"#8ea6c4",
     rain:"#7fb0e0", snow:"#e8f0ff", frame:"#2a2436", frameLit:"#443c55",
+    drape:"#5c3346", drapeLit:"#7d4a60", drapeDark:"#3a1f2e", rod:"#6b5a48",
+    tvGlow:"#2c4a5e",
     neonHot:"#ff5cc8", neonCore:"#ffd6f2", neonDim:"#8a3a6e", neonDead:"#4d3d59",
     tube:"#241c2c", cable:"#3d3550", cableLit:"#544a68",
     ledOn:"#f2555a", ledDim:"#4a1d22", bezel:"#16131f", bezelTop:"#2c2636",
@@ -279,12 +281,32 @@
   // Studio interior is x 9..163, y 76..282. Everything below is placed against a
   // wall with a clear gap to its neighbours -- the previous pass had the shelf
   // sitting inside the desk.
-  const BED   = {x:14,  y:84,  w:42, h:54};   // top-left corner
-  const DESK  = {x:34,  y:206, w:70, h:30};   // bottom-left, clear of the shelf
-  const WINDOW  = {x:36, y:10, w:96, h:50};
-  const KITCHEN = {x:96, y:84, w:62, h:42};   // top-right, against both walls
-  const CHAIR   = {x:118, y:206, w:34, h:34}; // bottom-right
-  const SHELF   = {x:14,  y:150, w:14, h:46}; // left wall, between bed and desk
+  // Every piece is anchored to a wall by construction, not by eye. A box's back
+  // edge sits at oy - h - dy, so an object flush against the back wall has its
+  // base at WALL_Y + h + dy -- backBase() computes that instead of me guessing a
+  // number and finding the gap later. Each piece keeps {x,y,w,h} as its visual
+  // footprint (y is the back edge, y+h the base) because Fred's walk targets are
+  // expressed against those.
+  const WALL_Y = 76;
+  const WINDOW = {x:36, y:10, w:96, h:50};
+  const backBase = (h, d) => WALL_Y + h + Math.round(d * DEPTH_RISE);
+  const piece = (x, w, d, h, base) =>
+    ({x, w, d, bh: h, y: base - h - Math.round(d * DEPTH_RISE),
+      h: h + Math.round(d * DEPTH_RISE)});
+
+  // back wall, left to right: fridge in the corner, counter under the window,
+  // shelf in the far corner
+  const FRIDGE  = piece(14,  24, 16, 52, backBase(52, 16));
+  const KITCHEN = piece(52,  64, 16, 26, backBase(26, 16));
+  const SHELF   = piece(140, 16, 12, 46, backBase(46, 12));
+  // middle band: the bed, and the telly across from it
+  const BED     = piece(12,  42, 44, 10, 214);
+  const TVST    = piece(96,  40, 14, 14, 214);
+  const TV      = piece(99,  34,  8, 24, TVST.y + TVST.h - 14);
+  // front: the desk under the bed, an armchair by the door
+  const DESK    = piece(12,  64, 16, 14, 252);
+  const CHAIR   = piece(100, 34, 16, 14, 266);
+  const PLANT   = piece(142, 16, 10, 13, 272);
   const DOOR = {y0:238, y1:280};
   const RACK_W = 28, RACK_H = 48, TOP_H = 9, RACK_D = 16;
   const ROW_A_Y = 156, ROW_B_Y = 252;
@@ -421,7 +443,7 @@
   }
 
   function studio(b) {
-    // rug marks the living space off from the work floor
+    // floor covering, then the partition walls
     b.fillStyle = C.rug; b.fillRect(BUNK.x, BUNK.y, BUNK.w, BUNK.h);
     b.fillStyle = C.rugLit; b.fillRect(BUNK.x + 3, BUNK.y + 3, BUNK.w - 6, 2);
     for (let y = BUNK.y + 10; y < BUNK.y + BUNK.h - 4; y += 9) {
@@ -433,96 +455,104 @@
     b.fillRect(BUNK.x - 4, BUNK.y - 6, 4, BUNK.h + 6);
     b.fillStyle = C.wall4; b.fillRect(BUNK.x + BUNK.w, BUNK.y - 6, 4, 2);
 
-    // Bed: one frame box, with the bedding banded onto its own top face so it
-    // rides the same shear instead of floating above it.
-    const bc = drawBox(b, BED.x, BED.y + BED.h, BED.w, 44, 10, MAT.wood);
-    fillTopBand(b, bc, C.cloth2, 0.05, 0.95, 0.00, 0.98);   // sheet
-    fillTopBand(b, bc, C.cloth3, 0.05, 0.95, 0.94, 0.98);   // turned edge
-    fillTopBand(b, bc, C.quilt,  0.05, 0.95, 0.00, 0.46);   // quilt over the legs
+    const box = (P, mat, opts) => drawBox(b, P.x, P.y + P.h, P.w, P.d, P.bh, mat, opts);
+
+    // --- back wall ---------------------------------------------------------
+    // Fridge, left corner.
+    const fc = box(FRIDGE, MAT.steel);
+    const fT = FRIDGE.y + FRIDGE.h - FRIDGE.bh;          // top of the front face
+    b.fillStyle = C.stl1; b.fillRect(FRIDGE.x + 2, fT + 17, FRIDGE.w - 4, 2);
+    b.fillStyle = C.handle;
+    b.fillRect(FRIDGE.x + FRIDGE.w - 7, fT + 8, 2, 7);
+    b.fillRect(FRIDGE.x + FRIDGE.w - 7, fT + 23, 2, 20);
+    b.fillStyle = C.bad;   b.fillRect(FRIDGE.x + 5, fT + 6, 3, 2);
+    b.fillStyle = C.on;    b.fillRect(FRIDGE.x + 10, fT + 6, 3, 2);
+    b.fillStyle = C.wood5; b.fillRect(FRIDGE.x + 6, fT + 24, 8, 6);
+
+    // Kitchen counter, centred under the window.
+    const kc = box(KITCHEN, MAT.unit);
+    const kT = KITCHEN.y + KITCHEN.h - KITCHEN.bh;
+    for (const hx of [KITCHEN.x + 8, KITCHEN.x + 25]) {
+      b.fillStyle = C.hob;  b.fillRect(hx, kT + 5, 12, 11);
+      b.fillStyle = C.stl3; b.fillRect(hx + 2, kT + 7, 8, 1);
+      b.fillRect(hx + 2, kT + 13, 8, 1);
+      b.fillRect(hx + 1, kT + 9, 1, 4); b.fillRect(hx + 10, kT + 9, 1, 4);
+    }
+    b.fillStyle = C.stl2; b.fillRect(KITCHEN.x + 45, kT + 4, 14, 14);
+    b.fillStyle = C.stl4; b.fillRect(KITCHEN.x + 46, kT + 5, 12, 2);
+    b.fillStyle = C.stl5; b.fillRect(KITCHEN.x + 51, kT - 4, 1, 8);
+    b.fillRect(KITCHEN.x + 51, kT - 4, 4, 1);
+    fillTopBand(b, kc, C.counterLit, 0.06, 0.94, 0.30, 0.36);
+    for (const u of [0.10, 0.42, 0.72]) fillTopBand(b, kc, C.wood5, u, u + 0.12, 0.55, 0.85);
+
+    // Bookshelf, right corner.
+    box(SHELF, MAT.wood);
+    const spines = [C.book, C.bookB, C.bookC, C.book, C.bookB, C.bookC, C.book];
+    for (let i = 0; i < spines.length; i++) {
+      b.fillStyle = spines[i];
+      b.fillRect(SHELF.x + 3 + (i % 2), SHELF.y + 12 + i * 6, SHELF.w - 7 - (i % 3), 4 + (i % 3));
+    }
+
+    // --- middle band -------------------------------------------------------
+    // Bed against the left wall, bedding banded onto its own top face.
+    const bc = box(BED, MAT.wood);
+    fillTopBand(b, bc, C.cloth2, 0.05, 0.95, 0.00, 0.98);
+    fillTopBand(b, bc, C.cloth3, 0.05, 0.95, 0.94, 0.98);
+    fillTopBand(b, bc, C.quilt,  0.05, 0.95, 0.00, 0.46);
     fillTopBand(b, bc, "#8a5866", 0.05, 0.95, 0.44, 0.46);
     for (const v of [0.10, 0.22, 0.34]) fillTopBand(b, bc, "#8a5866", 0.05, 0.95, v, v + 0.02);
-    fillTopBand(b, bc, C.pillow, 0.14, 0.86, 0.72, 0.92);   // pillow at the head
+    fillTopBand(b, bc, C.pillow, 0.14, 0.86, 0.72, 0.92);
     fillTopBand(b, bc, C.cloth4, 0.14, 0.86, 0.88, 0.92);
 
-    // Kitchen counter
-    drawBox(b, KITCHEN.x, KITCHEN.y + KITCHEN.h, KITCHEN.w, 16, 26, MAT.unit);
-    const kTop = KITCHEN.y + KITCHEN.h - 26;
-    for (const hx of [KITCHEN.x + 7, KITCHEN.x + 24]) {
-      b.fillStyle = C.hob;  b.fillRect(hx, kTop + 5, 12, 11);
-      b.fillStyle = C.stl3; b.fillRect(hx + 2, kTop + 7, 8, 1);
-      b.fillRect(hx + 2, kTop + 13, 8, 1);
-      b.fillRect(hx + 1, kTop + 9, 1, 4); b.fillRect(hx + 10, kTop + 9, 1, 4);
-    }
-    b.fillStyle = C.stl2; b.fillRect(KITCHEN.x + 41, kTop + 4, 13, 14);
-    b.fillStyle = C.stl4; b.fillRect(KITCHEN.x + 42, kTop + 5, 11, 2);
-    b.fillStyle = C.stl5; b.fillRect(KITCHEN.x + 47, kTop - 4, 1, 8);
-    b.fillRect(KITCHEN.x + 47, kTop - 4, 4, 1);
-    for (const dx of [4, 22, 40]) {
-      b.fillStyle = C.counterTop; b.fillRect(KITCHEN.x + dx, kTop + 20, 14, 5);
-      b.fillStyle = C.counterLit; b.fillRect(KITCHEN.x + dx + 5, kTop + 22, 4, 1);
-    }
+    // Telly on its stand, across the room from the bed.
+    box(TVST, MAT.wood);
+    box(TV, MAT.steel, {shadow: false});
+    const tT = TV.y + TV.h - TV.bh;
+    b.fillStyle = C.ink; b.fillRect(TV.x + 3, tT + 3, TV.w - 6, TV.bh - 8);
+    b.fillStyle = C.tvGlow || "#2c4a5e";
+    b.fillRect(TV.x + 4, tT + 4, TV.w - 8, TV.bh - 11);
+    b.fillStyle = C.stl5; b.fillRect(TV.x + 5, tT + 6, 8, 1);
+    b.fillRect(TV.x + 5, tT + 9, 14, 1);
+    b.fillStyle = C.on; b.fillRect(TV.x + TV.w - 5, tT + TV.bh - 4, 1, 1);
 
-    // Fridge: a tall box, so it gets a real side face
-    const F = {x: 134, y: KITCHEN.y + KITCHEN.h + 8, w: 24, h: 52};
-    drawBox(b, F.x, F.y + F.h, F.w, 16, F.h, MAT.steel);
-    const fTop = F.y;
-    b.fillStyle = C.stl1; b.fillRect(F.x + 2, fTop + 17, F.w - 4, 2);
-    b.fillStyle = C.handle;
-    b.fillRect(F.x + F.w - 7, fTop + 8, 2, 7);
-    b.fillRect(F.x + F.w - 7, fTop + 23, 2, 20);
-    b.fillStyle = C.bad;   b.fillRect(F.x + 5, fTop + 6, 3, 2);
-    b.fillStyle = C.on;    b.fillRect(F.x + 10, fTop + 6, 3, 2);
-    b.fillStyle = C.wood5; b.fillRect(F.x + 6, fTop + 24, 8, 6);
-
-    // Desk, monitor, keyboard, mug, chair -- all boxes now
-    const D = DESK;
-    drawBox(b, D.x, D.y + D.h, D.w, 16, 14, MAT.wood);
-    const dTop = D.y + D.h - 14;
-    const M = {x: D.x + 16, y: dTop - 22, w: 30, h: 21};
+    // --- front -------------------------------------------------------------
+    // Desk, directly below the bed: the computer corner.
+    box(DESK, MAT.wood);
+    const dT = DESK.y + DESK.h - DESK.bh;
+    const M = {x: DESK.x + 17, y: dT - 22, w: 30, h: 21};
     drawBox(b, M.x, M.y + M.h, M.w, 8, M.h, MAT.steel, {shadow: false});
     b.fillStyle = C.ink;  b.fillRect(M.x + 3, M.y + 3, M.w - 6, M.h - 8);
     b.fillStyle = C.on;   b.fillRect(M.x + M.w - 5, M.y + M.h - 3, 1, 1);
     b.fillStyle = C.stl2; b.fillRect(M.x + 12, M.y + M.h, 6, 3);
     b.fillStyle = C.stl4; b.fillRect(M.x + 8, M.y + M.h + 3, 14, 2);
-    b.fillStyle = C.stl2; b.fillRect(D.x + 18, dTop + 4, 26, 7);
-    b.fillStyle = C.stl4; b.fillRect(D.x + 18, dTop + 4, 26, 1);
+    b.fillStyle = C.stl2; b.fillRect(DESK.x + 19, dT + 4, 26, 7);
+    b.fillStyle = C.stl4; b.fillRect(DESK.x + 19, dT + 4, 26, 1);
     b.fillStyle = C.stl1;
     for (let r = 0; r < 3; r++)
-      for (let cc = 0; cc < 11; cc++) b.fillRect(D.x + 20 + cc * 2, dTop + 6 + r * 2, 1, 1);
-    b.fillStyle = C.wood5; b.fillRect(D.x + 55, dTop + 4, 5, 6);
-    b.fillStyle = C.wood4; b.fillRect(D.x + 55, dTop + 4, 5, 1);
-    b.fillStyle = C.wood3; b.fillRect(D.x + 60, dTop + 5, 1, 3);
+      for (let cc = 0; cc < 11; cc++) b.fillRect(DESK.x + 21 + cc * 2, dT + 6 + r * 2, 1, 1);
+    b.fillStyle = C.wood5; b.fillRect(DESK.x + 52, dT + 4, 5, 6);
+    b.fillStyle = C.wood4; b.fillRect(DESK.x + 52, dT + 4, 5, 1);
+    b.fillStyle = C.wood3; b.fillRect(DESK.x + 57, dT + 5, 1, 3);
     TERMINAL = {x: M.x + 3, y: M.y + 3, w: M.w - 6, h: M.h - 8};
+
     // A backless stool, deliberately: a chair back sits between the viewer and
     // the seat, so it would occlude Fred every time he sat down to work.
-    const sc = drawBox(b, D.x + 20, D.y + D.h + 22, 18, 12, 13, MAT.chair);
+    const sc = drawBox(b, DESK.x + 22, DESK.y + DESK.h + 22, 18, 12, 13, MAT.chair);
     fillTopBand(b, sc, C.cloth2, 0.12, 0.88, 0.15, 0.85);
 
-    // Armchair: a seat box with a taller back box behind it
-    drawBox(b, CHAIR.x, CHAIR.y + CHAIR.h, CHAIR.w, 16, 14, MAT.chair);
+    // Armchair by the door.
+    const ac = box(CHAIR, MAT.chair);
     drawBox(b, CHAIR.x + 2, CHAIR.y + CHAIR.h - 12, CHAIR.w - 4, 8, 20, MAT.chair, {shadow: false});
-    b.fillStyle = C.cloth2;
-    b.fillRect(CHAIR.x + 5, CHAIR.y + CHAIR.h - 13, CHAIR.w - 10, 5);
+    fillTopBand(b, ac, C.cloth2, 0.12, 0.88, 0.10, 0.70);
 
-    // Bookshelf
-    drawBox(b, SHELF.x, SHELF.y + SHELF.h, SHELF.w, 10, SHELF.h, MAT.wood);
-    const spines = [C.book, C.bookB, C.bookC, C.book, C.bookB, C.bookC, C.book];
-    for (let i = 0; i < spines.length; i++) {
-      b.fillStyle = spines[i];
-      b.fillRect(SHELF.x + 2 + (i % 2), SHELF.y + 4 + i * 6, SHELF.w - 5 - (i % 3), 4 + (i % 3));
-    }
-
-    // Plant
-    const PL = {x: 100, y: 252};
-    drawBox(b, PL.x, PL.y + 14, 16, 10, 13, MAT.wood);
+    // Plant in the near corner.
+    box(PLANT, MAT.wood);
     b.fillStyle = C.onDim;
     for (const [dx, dy] of [[3,-6],[6,-12],[9,-8],[12,-4],[7,-4],[10,-13]])
-      b.fillRect(PL.x + dx, PL.y + dy, 3, 3);
+      b.fillRect(PLANT.x + dx, PLANT.y + PLANT.h - PLANT.bh + dy, 3, 3);
     b.fillStyle = C.on;
-    for (const [dx, dy] of [[6,-12],[10,-13]]) b.fillRect(PL.x + dx, PL.y + dy, 2, 2);
-
-    b.fillStyle = C.dim; b.font = "7px ui-monospace, monospace"; b.textAlign = "left";
-    b.fillText("bunk", BUNK.x + 6, BUNK.y + BUNK.h - 7);
+    for (const [dx, dy] of [[6,-12],[10,-13]])
+      b.fillRect(PLANT.x + dx, PLANT.y + PLANT.h - PLANT.bh + dy, 2, 2);
   }
 
   function lightPools(b) {
@@ -945,6 +975,39 @@
     return room;
   }
 
+  // Drapes hang in front of the glass and the weather, which is what sells them
+  // as being inside the room rather than printed on the view.
+  function drapes() {
+    const x0 = WINDOW.x - 7, x1 = WINDOW.x + WINDOW.w + 7, top = WINDOW.y - 9;
+    ctx.fillStyle = C.rod;                              // rod, with finials
+    ctx.fillRect(x0 - 3, top, (x1 - x0) + 6, 2);
+    ctx.fillStyle = C.stl4;
+    ctx.fillRect(x0 - 4, top - 1, 3, 4); ctx.fillRect(x1 + 1, top - 1, 3, 4);
+
+    const bot = WINDOW.y + WINDOW.h + 4;
+    for (const [px, lean] of [[x0, 1], [x1 - 16, -1]]) {
+      // Each panel is drawn as vertical folds: a pleat is a light column with a
+      // dark one beside it, so the shading comes from the geometry rather than
+      // from a gradient that would band at this size.
+      for (let i = 0; i < 16; i++) {
+        const fold = (i + (lean > 0 ? 0 : 1)) % 5;
+        ctx.fillStyle = fold === 0 ? C.drapeLit : fold === 3 ? C.drapeDark : C.drape;
+        // gathered at the rod, falling wider toward the floor
+        const t = i / 15, sway = Math.round(Math.sin(t * 2.2) * 2) * lean;
+        ctx.fillRect(px + i, top + 2, 1, bot - top - 2 + sway);
+      }
+      ctx.fillStyle = C.drapeDark;                      // hem
+      ctx.fillRect(px, bot - 2, 16, 2);
+      ctx.fillStyle = C.rod;                            // tieback
+      ctx.fillRect(px + (lean > 0 ? 0 : 2), WINDOW.y + WINDOW.h - 14, 14, 2);
+    }
+    ctx.fillStyle = C.drape;                            // valance across the top
+    ctx.fillRect(x0, top + 2, x1 - x0, 6);
+    ctx.fillStyle = C.drapeLit; ctx.fillRect(x0, top + 2, x1 - x0, 1);
+    ctx.fillStyle = C.drapeDark;
+    for (let x = x0; x < x1; x += 4) ctx.fillRect(x, top + 6, 1, 2);
+  }
+
   function drawWindow(now, dt) {
     const season = seasonNow(new Date()), night = isNight(), kind = weatherKind();
     const key = season + "|" + night + "|" + kind;
@@ -984,6 +1047,8 @@
       ctx.fillRect(WINDOW.x - 6, WALL_H, WINDOW.w + 12, 46);
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
     }
+    drapes();
+
     if (weather && weather.stale) {
       ctx.fillStyle = C.dim; ctx.font = "5px ui-monospace, monospace"; ctx.textAlign = "left";
       ctx.fillText("?", WINDOW.x + WINDOW.w + 5, WINDOW.y + 7);
@@ -999,7 +1064,7 @@
     dist: 0, asleep: true, activity: "sleep", say: "", sayUntil: 0,
     lastEvent: Date.now(),
   };
-  const DESK_SEAT = {x: DESK.x + 31, y: DESK.y + 54};   // in front of the desk chair
+  const DESK_SEAT = {x: DESK.x + 31, y: DESK.y + 42};   // in front of the stool
   const COOK_SPOT = {x: KITCHEN.x + 22, y: KITCHEN.y + KITCHEN.h + 22};
   const READ_SPOT = {x: CHAIR.x + 17, y: CHAIR.y + CHAIR.h + 6};
   let unacked = 0, tl = null, walking = false;
@@ -1178,7 +1243,7 @@
       if (!it.fred) { drawRack(it.r); continue; }
       if (fred.asleep) {
         const rise = Math.floor(now / 1000) % 2 ? -1 : 0;
-        blit(SLEEP, BED.x + 5, BED.y + 15 + rise, false);
+        blit(SLEEP, BED.x + 12, BED.y + 4 + rise, false);
         continue;
       }
       ctx.fillStyle = "rgba(11,10,16,.45)";
