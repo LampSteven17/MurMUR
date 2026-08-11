@@ -226,6 +226,14 @@ func cmdConsole(args []string) error {
 		fmt.Fprintf(os.Stderr, "console: fleet view enabled as %s\n", active.TokenID)
 	}
 
+	// Coordinates for the room's window. Absent, the window simply shows no
+	// weather rather than a guess about where the lab is.
+	if w := console.NewWeather(os.Getenv("MURMUR_WEATHER_LAT"), os.Getenv("MURMUR_WEATHER_LON")); w != nil {
+		srv.SetWeather(w)
+		fmt.Fprintf(os.Stderr, "console: weather enabled for %s,%s\n",
+			os.Getenv("MURMUR_WEATHER_LAT"), os.Getenv("MURMUR_WEATHER_LON"))
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return srv.Run(ctx, *listen)

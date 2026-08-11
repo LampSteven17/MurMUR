@@ -32,8 +32,9 @@ var animeJS []byte
 
 // Server is the event hub, plus an optional live fleet view.
 type Server struct {
-	sink  *events.FileSink
-	fleet *Fleet // nil when the console runs credential-free (no --config)
+	sink    *events.FileSink
+	fleet   *Fleet   // nil when the console runs credential-free (no --config)
+	weather *Weather // nil unless coordinates are configured
 
 	mu   sync.Mutex
 	subs map[chan events.Event]struct{}
@@ -50,6 +51,9 @@ func New(eventsDir string) (*Server, error) {
 // SetFleet enables the fleet view. Pass a read-only PVE identity — the console
 // renders cluster state and never mutates it.
 func (s *Server) SetFleet(f *Fleet) { s.fleet = f }
+
+// SetWeather enables the room's window. Pass nil to leave it a plain view.
+func (s *Server) SetWeather(w *Weather) { s.weather = w }
 
 // Run serves until ctx is cancelled.
 func (s *Server) Run(ctx context.Context, listen string) error {
@@ -74,6 +78,13 @@ func (s *Server) Run(ctx context.Context, listen string) error {
 	mux.HandleFunc("GET /api/events", s.handleQuery)
 	mux.HandleFunc("GET /api/stream", s.handleStream)
 	mux.HandleFunc("POST /api/ack", s.handleAck)
+	mux.HandleFunc("GET /api/weather", func(w http.ResponseWriter, r *http.Request) {
+		if s.weather == nil {
+			http.Error(w, "weather disabled: no coordinates configured", http.StatusNotFound)
+			return
+		}
+		s.weather.handle(w, r)
+	})
 	mux.HandleFunc("GET /api/fleet", func(w http.ResponseWriter, r *http.Request) {
 		if s.fleet == nil {
 			http.Error(w, "fleet view disabled: console started without --config", http.StatusNotFound)

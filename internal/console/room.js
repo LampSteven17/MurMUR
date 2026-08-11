@@ -41,6 +41,11 @@
     fDark:"#a02c2c", smoke:"#4a5878",
     water:"#4aa8e8", waterLit:"#9fdcff", bucket:"#7a6a58", bucketRim:"#a89680",
     steam:"#c0cbdc",
+    counter:"#4a4256", counterTop:"#6b6178", hob:"#2a2432", pot:"#8b9bb4",
+    chairA:"#463a52", chairB:"#574868", book:"#a8524a", bookB:"#4a6ea8",
+    skyDay:"#6f9fd0", skyDusk:"#8a6a8c", skyNight:"#141d33",
+    sun:"#ffe9a8", moon:"#dfe6f2", star:"#c0cbdc", cloud:"#8ea6c4",
+    rain:"#7fb0e0", snow:"#e8f0ff", frame:"#3a3040",
     hair:"#4a3526", skin:"#eec39a", shirt:"#96603c", pants:"#39405e",
     boot:"#181425", dark:"#141020", txt:"#c0cbdc", dim:"#5a6988",
   };
@@ -125,7 +130,11 @@
   // --- room geometry -------------------------------------------------------
   const WALL_H = 26, FLOOR_B = 154;
   const BUNK = {x:6, y:30, w:58, h:120};
-  const BED  = {x:14, y:44, w:28, h:38};
+  const BED  = {x:14, y:44, w:26, h:34};
+  const WINDOW  = {x:18, y:5, w:26, h:16};    // in the back wall, above the bunk
+  const KITCHEN = {x:44, y:44, w:18, h:20};   // counter + hob, right of the bed
+  const CHAIR   = {x:46, y:92, w:15, h:16};   // armchair he reads in
+  const SHELF   = {x:8,  y:70, w:6,  h:18};   // a few books against the wall
   const DOOR = {y0:126, y1:150};              // gap in the bunk's right wall
   const RACK_W = 16, RACK_H = 28, TOP_H = 5;  // 5px top face, 23px front face
   const ROW_A_Y = 72, ROW_B_Y = 128;          // baseline = front-most floor row
@@ -232,6 +241,29 @@
     // a chair, pushed in
     b.fillStyle = C.rackEdge; b.fillRect(D.x + 12, D.y + 18, 10, 8);
     b.fillStyle = C.rug;      b.fillRect(D.x + 13, D.y + 19, 8, 6);
+
+    // kitchenette: counter with a hob, so "cooking" has somewhere to happen
+    b.fillStyle = C.rackEdge; b.fillRect(KITCHEN.x - 1, KITCHEN.y - 1, KITCHEN.w + 2, KITCHEN.h + 2);
+    b.fillStyle = C.counter;    b.fillRect(KITCHEN.x, KITCHEN.y, KITCHEN.w, KITCHEN.h);
+    b.fillStyle = C.counterTop; b.fillRect(KITCHEN.x, KITCHEN.y, KITCHEN.w, 4);
+    b.fillStyle = C.hob;        b.fillRect(KITCHEN.x + 3, KITCHEN.y + 7, 5, 5);
+    b.fillRect(KITCHEN.x + 10, KITCHEN.y + 7, 5, 5);
+    b.fillStyle = C.rackEdge;   b.fillRect(KITCHEN.x + 2, KITCHEN.y + 15, KITCHEN.w - 4, 1);
+
+    // armchair, facing the room
+    b.fillStyle = C.rackEdge; b.fillRect(CHAIR.x - 1, CHAIR.y - 1, CHAIR.w + 2, CHAIR.h + 2);
+    b.fillStyle = C.chairA;   b.fillRect(CHAIR.x, CHAIR.y, CHAIR.w, CHAIR.h);
+    b.fillStyle = C.chairB;   b.fillRect(CHAIR.x + 2, CHAIR.y + 4, CHAIR.w - 4, CHAIR.h - 6);
+    b.fillStyle = C.chairA;   b.fillRect(CHAIR.x, CHAIR.y + 3, 2, CHAIR.h - 4);
+    b.fillRect(CHAIR.x + CHAIR.w - 2, CHAIR.y + 3, 2, CHAIR.h - 4);
+
+    // a few books
+    b.fillStyle = C.rackEdge; b.fillRect(SHELF.x - 1, SHELF.y - 1, SHELF.w + 2, SHELF.h + 2);
+    b.fillStyle = C.bedFrame; b.fillRect(SHELF.x, SHELF.y, SHELF.w, SHELF.h);
+    for (let i = 0; i < 5; i++) {
+      b.fillStyle = i % 2 ? C.book : C.bookB;
+      b.fillRect(SHELF.x + 1 + (i % 3), SHELF.y + 2 + i * 3, 3, 2);
+    }
 
     b.fillStyle = C.dim; b.font = "5px ui-monospace, monospace"; b.textAlign = "left";
     b.fillText("bunk", BUNK.x + 4, BUNK.y + BUNK.h - 5);
@@ -417,6 +449,92 @@
     }
   }
 
+
+  // --- the window ------------------------------------------------------------
+  // The one place the room admits an outside world. Sky colour follows the
+  // clock, everything in front of it follows the weather report.
+  let weather = null;   // {code, temp_c, is_day, wind_kph, stale} or null
+
+  // WMO codes, collapsed to what can actually be drawn at 26x16 px.
+  function sky(now) {
+    const h = new Date().getHours() + new Date().getMinutes() / 60;
+    const night = h < 5.5 || h >= 20.5;
+    const dusk = (h >= 5.5 && h < 7) || (h >= 18.5 && h < 20.5);
+    return {night, dusk, col: night ? C.skyNight : dusk ? C.skyDusk : C.skyDay};
+  }
+
+  function weatherKind() {
+    if (!weather) return "clear";
+    const c = weather.code;
+    if (c >= 71 && c <= 77) return "snow";
+    if (c === 85 || c === 86) return "snow";
+    if ((c >= 51 && c <= 67) || (c >= 80 && c <= 82) || c === 95 || c === 96 || c === 99) return "rain";
+    if (c >= 45 && c <= 48) return "fog";
+    if (c === 2 || c === 3) return "cloud";
+    if (c === 1) return "part";
+    return "clear";
+  }
+
+  function drawWindow(now) {
+    const w = WINDOW, s = sky(now), kind = weatherKind();
+    ctx.fillStyle = C.frame; ctx.fillRect(w.x - 2, w.y - 2, w.w + 4, w.h + 4);
+    ctx.fillStyle = s.col;   ctx.fillRect(w.x, w.y, w.w, w.h);
+
+    if (s.night) {
+      for (let i = 0; i < 9; i++) {
+        const sx = w.x + 2 + ((hash2(i * 41, 7) * (w.w - 4)) | 0);
+        const sy = w.y + 2 + ((hash2(i * 17, 3) * (w.h - 6)) | 0);
+        if (kind === "cloud" || kind === "rain" || kind === "snow") continue;
+        ctx.fillStyle = (Math.floor(now / 900) + i) % 7 === 0 ? C.moon : C.star;
+        ctx.fillRect(sx, sy, 1, 1);
+      }
+      if (kind === "clear" || kind === "part") {
+        ctx.fillStyle = C.moon;
+        ctx.fillRect(w.x + w.w - 9, w.y + 3, 4, 4);
+        ctx.fillStyle = s.col; ctx.fillRect(w.x + w.w - 11, w.y + 2, 3, 4);
+      }
+    } else if (kind === "clear" || kind === "part") {
+      ctx.fillStyle = C.sun;
+      ctx.fillRect(w.x + 4, w.y + 3, 5, 5);
+      ctx.fillRect(w.x + 3, w.y + 4, 7, 3);
+    }
+
+    if (kind === "cloud" || kind === "part" || kind === "rain" || kind === "snow" || kind === "fog") {
+      const drift = Math.floor(now / 220) % (w.w + 16);
+      ctx.fillStyle = kind === "fog" ? C.steam : C.cloud;
+      for (const [ox, oy, cw] of [[0, 3, 11], [8, 7, 13], [-6, 10, 9]]) {
+        let cx = w.x + ((ox + drift) % (w.w + 14)) - 7;
+        for (let i = 0; i < cw; i++) {
+          const px = cx + i;
+          if (px < w.x || px >= w.x + w.w) continue;
+          const th = i === 0 || i === cw - 1 ? 1 : 2;
+          ctx.fillRect(px, w.y + oy, 1, th);
+        }
+      }
+    }
+
+    if (kind === "rain" || kind === "snow") {
+      const n = kind === "rain" ? 14 : 10;
+      for (let i = 0; i < n; i++) {
+        const speed = kind === "rain" ? 90 : 260;
+        const px = w.x + 1 + ((hash2(i * 29, 11) * (w.w - 2)) | 0);
+        const sway = kind === "snow" ? Math.round(Math.sin(now / 700 + i) * 1.5) : 0;
+        const py = w.y + ((now / speed + i * 5) % (w.h - 2)) | 0;
+        ctx.fillStyle = kind === "rain" ? C.rain : C.snow;
+        ctx.fillRect(px + sway, py + 1, 1, kind === "rain" ? 2 : 1);
+      }
+    }
+
+    // glazing bars last, so everything sits behind the glass
+    ctx.fillStyle = C.frame;
+    ctx.fillRect(w.x + ((w.w / 2) | 0), w.y, 1, w.h);
+    ctx.fillRect(w.x, w.y + ((w.h / 2) | 0), w.w, 1);
+    if (weather && weather.stale) {   // say so rather than imply it is current
+      ctx.fillStyle = C.dim; ctx.font = "5px ui-monospace, monospace"; ctx.textAlign = "left";
+      ctx.fillText("?", w.x + w.w + 2, w.y + 6);
+    }
+  }
+
   // --- Fred ----------------------------------------------------------------
   // What he is doing, not just where he is: "sleep" | "walk" | "inspect" |
   // "type" | "fight". The activity survives arrival, so he keeps doing the thing
@@ -427,12 +545,13 @@
     lastEvent: Date.now(),
   };
   const DESK_SEAT = {x: BUNK.x + 24, y: BUNK.y + 92};   // chair, below the terminal
+  const COOK_SPOT = {x: KITCHEN.x + 8, y: KITCHEN.y + KITCHEN.h + 12};
+  const READ_SPOT = {x: CHAIR.x + 7, y: CHAIR.y + CHAIR.h + 2};
   let unacked = 0, tl = null, walking = false;
   // A rack burns while it has an unacked escalation -- which is what "that
   // server is on fire" actually means. Cleared by an ack or an all-clear.
   const burning = new Set();
   const IDLE_MS = 90000;
-  let goingToBed = false;
   let nowMs = 0;              // current frame time, for the fire's noise
   const pendingGlow = [];     // fire glows, collected during the sorted pass
   const pendingSteam = [];    // steam from water landing, drawn with the glows
@@ -506,12 +625,81 @@
     else { fred.asleep = true; }
   }
 
+
+  // --- his day ---------------------------------------------------------------
+  // Idle is not one behaviour. Given nothing to do he keeps hours: asleep at
+  // night, coffee and the terminal in the morning, cooking around meals, a book
+  // in the evening. Work always interrupts -- an event pulls him out of any of
+  // these -- so the routine only decides what "nothing to do" looks like.
+  function routineFor(d) {
+    const h = d.getHours() + d.getMinutes() / 60;
+    if (h >= 23 || h < 6.5) return "sleep";
+    if (h < 8.5)            return "type";    // coffee, at the terminal
+    if (h >= 12 && h < 13)  return "cook";
+    if (h >= 17.5 && h < 19) return "cook";
+    if (h >= 20)            return "read";
+    return "type";
+  }
+
+  const ROUTINE_SPOT = {
+    sleep: () => ({x: BED.x + 8, y: BED.y + 30}),
+    type:  () => ({x: DESK_SEAT.x, y: DESK_SEAT.y}),
+    cook:  () => ({x: COOK_SPOT.x, y: COOK_SPOT.y}),
+    read:  () => ({x: READ_SPOT.x, y: READ_SPOT.y}),
+  };
+
+  function goIdle() {
+    const want = routineFor(new Date());
+    const spot = ROUTINE_SPOT[want]();
+    fred.say = "";
+    fred.asleep = false;          // he has to get up before he can go anywhere
+    walk(spot.x, spot.y, () => {
+      fred.activity = want;
+      fred.asleep = (want === "sleep");
+    });
+  }
+
+  // Reading: seated side-on with a book held up. Cooking reuses the up pose
+  // with a stirring arm, because at 12px a stir is an arm and nothing else.
+  const READ = [
+    ["............", "...hhhh.....", "..hhhhhh....", "..hhssss....",
+     "..hhsEss....", "..hhssss....", "...ssss.....", "..kCCCCk....",
+     "..CCCCCCs...", "..CCCCCCs...", "..kCCCCk....", "..PPPPPP....",
+     "..PPPP......", "..bbb......."],
+    ["............", "...hhhh.....", "..hhhhhh....", "..hhssss....",
+     "..hhssss....", "..hhsEss....", "...ssss.....", "..kCCCCk....",
+     "..CCCCCCs...", "..CCCCCCs...", "..kCCCCk....", "..PPPPPP....",
+     "..PPPP......", "..bbb......."],
+  ];
+
+  function drawBook(fx, fy, now) {
+    const flip = Math.floor(now / 2600) % 2;
+    ctx.fillStyle = C.rackEdge; ctx.fillRect(fx + 7, fy - 10, 5, 5);
+    ctx.fillStyle = flip ? C.book : C.bookB; ctx.fillRect(fx + 8, fy - 9, 3, 3);
+  }
+
+  function drawPot(now) {
+    const k = KITCHEN;
+    ctx.fillStyle = C.rackEdge; ctx.fillRect(k.x + 3, k.y + 6, 6, 2);
+    ctx.fillStyle = C.pot;      ctx.fillRect(k.x + 3, k.y + 7, 6, 4);
+    // steam, only while something is on the hob
+    ctx.fillStyle = C.steam; ctx.globalAlpha = 0.5;
+    for (let i = 0; i < 3; i++) {
+      const t = ((now / 620 + i * 0.33) % 1);
+      ctx.fillRect(k.x + 4 + i * 2 + Math.round(Math.sin(now / 400 + i) * 1),
+                   Math.round(k.y + 5 - t * 9), 1, 1);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // --- render --------------------------------------------------------------
   let prevX = fred.x, prevY = fred.y;
 
   function draw(now) {
     if (!bg) paintBackground();
     ctx.drawImage(bg, 0, 0);
+    drawWindow(now);
+    if (fred.activity === "cook" && !walking) drawPot(now);
     nowMs = now;
     pendingGlow.length = 0;
     pendingSteam.length = 0;
@@ -541,7 +729,13 @@
 
       // Standing still is the least informative thing he can do, so every
       // arrival hands off to a pose that says what he is actually doing.
-      if (!walking && fred.activity === "type") {
+      if (!walking && fred.activity === "read") {
+        blit(READ[Math.floor(now / 1500) % 2], fred.x - 6, fred.y - 14, false);
+        drawBook(fred.x - 6, fred.y, now);
+      } else if (!walking && fred.activity === "cook") {
+        const stir = Math.floor(now / 300) % 2;
+        blit(SPR.up, fred.x - 6, fred.y - 18 - stir, false);
+      } else if (!walking && fred.activity === "type") {
         blit(SIT[Math.floor(now / 190) % 2], fred.x - 6, fred.y - 12, false);
       } else if (!walking && fred.activity === "inspect") {
         blit(INSPECT[Math.floor(now / 260) % 2], fred.x - 6, fred.y - 14, false);
@@ -584,7 +778,7 @@
       ctx.globalCompositeOperation = "source-over";
     }
 
-    if (fred.asleep && Math.floor(now / 900) % 2) {
+    if (fred.asleep && fred.activity === "sleep" && Math.floor(now / 900) % 2) {
       ctx.fillStyle = C.dim; ctx.font = "6px ui-monospace, monospace"; ctx.textAlign = "left";
       ctx.fillText("z", BED.x + BED.w + 3, BED.y + 12);
     }
@@ -654,17 +848,21 @@
     // that if a walk ever failed to signal completion -- a cancelled timeline,
     // or the loop being paused mid-stride while the tab sat on another view --
     // he stayed on his feet indefinitely with nothing to retry it.
+    // Idle behaviour is re-decided against the clock, not latched once. Gating
+    // this on "not asleep" meant that once he went to bed nothing ever
+    // reconsidered, so he slept straight through the following day.
     const idle = Date.now() - fred.lastEvent;
-    if (!fred.asleep && idle > IDLE_MS) {
-      if (!goingToBed) {
-        goingToBed = true;
-        goSleep();
-      } else if (idle > IDLE_MS * 4) {
-        // Long past due and still upright: stop being clever and put him to bed.
-        if (tl) { tl.cancel(); tl = null; }
-        fred.x = BED.x + 8; fred.y = BED.y + 30;
-        walking = false; fred.asleep = true; fred.activity = "sleep";
+    if (idle > IDLE_MS && !walking) {
+      const want = routineFor(new Date());
+      if (fred.activity !== want) {
+        goIdle();
       }
+    } else if (idle > IDLE_MS * 4 && walking && !tl) {
+      // Stranded mid-routine with no timeline to finish the walk.
+      const spot = ROUTINE_SPOT[routineFor(new Date())]();
+      fred.x = spot.x; fred.y = spot.y; walking = false;
+      fred.activity = routineFor(new Date());
+      fred.asleep = fred.activity === "sleep";
     }
     draw(now);
   }
@@ -710,7 +908,6 @@
       : (msg || "walking the floor");
     fred.sayUntil = performance.now() + 12000;
 
-    goingToBed = false;
 
     // "thinking" is the warden telling us inference has started. It is the one
     // slow thing this agent does, and it belongs at the desk, not at a rack.
@@ -750,6 +947,11 @@
       });
     } catch { layout(["node"]); }
     rebuildLeds();
+
+    try {
+      const r = await fetch("/api/weather");
+      weather = r.ok ? await r.json() : null;   // 404 simply means unconfigured
+    } catch { weather = null; }
 
     try {
       const d = await (await fetch("/api/events?limit=60")).json();
@@ -793,6 +995,8 @@
     }
   };
 
+  // test hook: age the idle clock without waiting it out in real time
+  if (typeof window !== 'undefined') window.__forceIdle = () => { fred.lastEvent = 0; };
   load().then(() => requestAnimationFrame(frame));
   setInterval(load, 60000);
 })();
