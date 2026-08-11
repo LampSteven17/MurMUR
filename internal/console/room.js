@@ -45,6 +45,9 @@
     fDark:"#a02c2c", smoke:"#4a5878",
     water:"#4aa8e8", waterLit:"#9fdcff", bucket:"#7a6a58", bucketRim:"#a89680",
     steam:"#c0cbdc",
+    neonHot:"#ff5cc8", neonCore:"#ffd6f2", neonDim:"#8a3a6e", neonDead:"#33263a",
+    tube:"#241c2c", cable:"#3d3550", cableLit:"#544a68",
+    ledOn:"#e43b44", ledDim:"#4a1d22", bezel:"#1a1622", bezelTop:"#2c2636",
     counter:"#4a4256", counterTop:"#6b6178", hob:"#2a2432", pot:"#8b9bb4",
     chairA:"#463a52", chairB:"#574868", book:"#a8524a", bookB:"#4a6ea8",
     skyDay:"#6f9fd0", skyDusk:"#8a6a8c", skyNight:"#141d33",
@@ -146,6 +149,8 @@
   const AISLE_MAIN = 128, AISLE_FRONT = 184;
   const GAPS = [122, 162, 208, 254, 298];
   const DOOR_X = BUNK.x + BUNK.w + 12;
+  const SIGN  = {x:132, y:9,  w:58, h:14};    // neon, mounted on the back wall
+  const CLOCK = {x:246, y:12, w:40, h:20};
 
   let racks = [];   // {node, x, base, guests:[{name,status}]}
   const leds = [];
@@ -460,6 +465,98 @@
     }
   }
 
+
+
+  // --- wall fittings ----------------------------------------------------------
+  // A 3x5 stroke font. Anything smaller stops being letters, anything larger
+  // does not fit the wall above the racks.
+  const GLYPH = {
+    T:["###",".#.",".#.",".#.",".#."], H:["#.#","#.#","###","#.#","#.#"],
+    E:["###","#..","##.","#..","###"], L:["#..","#..","#..","#..","###"],
+    I:["###",".#.",".#.",".#.","###"], G:[".##","#..","#.#","#.#",".##"],
+    A:[".#.","#.#","###","#.#","#.#"], B:["##.","#.#","##.","#.#","##."],
+    " ":["...","...","...","...","..."],
+  };
+  const DIGIT = {
+    "0":["###","#.#","#.#","#.#","###"], "1":["..#","..#","..#","..#","..#"],
+    "2":["###","..#","###","#..","###"], "3":["###","..#","###","..#","###"],
+    "4":["#.#","#.#","###","..#","..#"], "5":["###","#..","###","..#","###"],
+    "6":["###","#..","###","#.#","###"], "7":["###","..#","..#","..#","..#"],
+    "8":["###","#.#","###","#.#","###"], "9":["###","#.#","###","..#","###"],
+  };
+  const SIGN_TEXT = "THE LIGHT LAB";
+  // Which letters have given up. Index into SIGN_TEXT: the second L is dead
+  // outright, the I and the final B stutter.
+  const DEAD = new Set([10]);
+  const FLICKER = new Set([5, 12]);
+
+  function glyphAt(map, ch, x, y, colour) {
+    const g = map[ch];
+    if (!g) return;
+    ctx.fillStyle = colour;
+    for (let r = 0; r < 5; r++)
+      for (let c = 0; c < 3; c++)
+        if (g[r][c] === "#") ctx.fillRect(x + c, y + r, 1, 1);
+  }
+
+  // Deterministic stutter: a dying tube has a rhythm, not a coin flip per frame.
+  function tubeLit(i, now) {
+    if (DEAD.has(i)) return false;
+    if (!FLICKER.has(i)) return true;
+    const t = Math.floor(now / 90) + i * 13;
+    return hash2(i * 97, t) > 0.28;
+  }
+
+  function drawSign(now) {
+    let x = SIGN.x + 2;
+    const y = SIGN.y + 5;
+    // glow first, so the tubes sit inside their own halo
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < SIGN_TEXT.length; i++) {
+      const ch = SIGN_TEXT[i];
+      if (ch !== " " && tubeLit(i, now)) {
+        ctx.globalAlpha = 0.10; ctx.fillStyle = C.neonHot;
+        ctx.fillRect(x - 2, y - 2, 7, 9);
+      }
+      x += ch === " " ? 2 : 4;
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+
+    x = SIGN.x + 2;
+    for (let i = 0; i < SIGN_TEXT.length; i++) {
+      const ch = SIGN_TEXT[i];
+      if (ch !== " ") {
+        const lit = tubeLit(i, now);
+        glyphAt(GLYPH, ch, x, y, lit ? C.neonCore : C.neonDead);
+        if (lit) {   // hot core, one pixel in, is what makes it read as neon
+          ctx.fillStyle = C.neonHot;
+          ctx.fillRect(x + 1, y + 2, 1, 1);
+        }
+      }
+      x += ch === " " ? 2 : 4;
+    }
+  }
+
+  function drawClock(now) {
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    const x = CLOCK.x + 5, y = CLOCK.y + 7;
+    // dim ghost segments, so the unlit parts of the display still read as a display
+    for (let i = 0; i < 4; i++) glyphAt(DIGIT, "8", x + i * 4 + (i > 1 ? 3 : 0), y, C.ledDim);
+    glyphAt(DIGIT, hh[0], x, y, C.ledOn);
+    glyphAt(DIGIT, hh[1], x + 4, y, C.ledOn);
+    glyphAt(DIGIT, mm[0], x + 11, y, C.ledOn);
+    glyphAt(DIGIT, mm[1], x + 15, y, C.ledOn);
+    // colon on the seconds, which is the only thing that says it is running
+    ctx.fillStyle = d.getSeconds() % 2 ? C.ledDim : C.ledOn;
+    ctx.fillRect(x + 9, y + 1, 1, 1);
+    ctx.fillRect(x + 9, y + 3, 1, 1);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 0.08; ctx.fillStyle = C.ledOn;
+    ctx.fillRect(CLOCK.x + 2, CLOCK.y + 4, CLOCK.w - 4, 11);
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+  }
 
   // --- the view outside ------------------------------------------------------
   // Season is carried almost entirely by PALETTE, not by shapes: the sky, hills
@@ -915,6 +1012,8 @@
     if (!bg) paintBackground();
     ctx.drawImage(bg, 0, 0);
     drawWindow(now, dtMs);
+    drawSign(now);
+    drawClock(now);
     if (fred.activity === "cook" && !walking) drawPot(now);
     nowMs = now;
     pendingGlow.length = 0;
