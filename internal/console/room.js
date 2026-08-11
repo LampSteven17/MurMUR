@@ -16,11 +16,10 @@
   const cvs = document.getElementById("room");
   if (!cvs) return;
 
-  // 320x200. Chosen as a modern square-pixel 8:5 canvas, not as VGA nostalgia:
-  // this widget sizes its own CSS box, so 16:9 divisibility matters far less
-  // than an aspect that suits a room interior. 320x180 would have cost 20 rows
-  // of height that a top-down room actually needs.
-  const W = 320, H = 200, TILE = 16;
+  // 480x300 — same 8:5 aspect, 2.25x the pixels. The extra density is spent on
+  // shading ramps and surface detail rather than on a bigger room: the previous
+  // pass was flat because every surface was two-tone, not because it was small.
+  const W = 480, H = 300, TILE = 24;
   cvs.width = W; cvs.height = H;
   const ctx = cvs.getContext("2d", {alpha: false});
   ctx.imageSmoothingEnabled = false;
@@ -32,93 +31,106 @@
   // emissives, so the status lights are the only vivid pixels in the frame.
   // Fred is warm, which separates him from the room without competing.
   const C = {
-    ink:"#0f0f18", deep:"#181425", wall:"#262b44", wallCap:"#3a4466",
-    floorA:"#2b3350", floorB:"#262d48", seam:"#222840", scuff:"#313a5c",
-    rackEdge:"#141020", rackTop:"#5a6988", rackFace:"#3a4466",
-    rackLit:"#4a5878", vent:"#1d2338",
-    bedFrame:"#5a4632", bedTop:"#6f5740", quilt:"#8b9bb4", pillow:"#c0cbdc",
-    rug:"#33405e",
-    on:"#63c74d", bad:"#e43b44", off:"#2f3854",
-    // The only other saturated colours in the scene, and they get to be loud:
-    // a rack on fire should be the first thing your eye lands on.
+    // Ramps, not pairs. Each surface gets 4-5 steps whose highlights shift warm
+    // and whose shadows shift cool -- brightness alone reads as plastic. Light
+    // is from the upper left, consistently, everywhere in the scene.
+    ink:"#0b0a10", deep:"#15121f",
+
+    wall1:"#1b1a2b", wall2:"#242439", wall3:"#2e2f49", wall4:"#3a3c5c", wall5:"#4a4d70",
+    flr1:"#1e1f31", flr2:"#262940", flr3:"#2f334e", flr4:"#3a3f5e", flr5:"#4a5070",
+    seam:"#171826", scuff:"#3f4566",
+
+    stl1:"#12111b", stl2:"#242639", stl3:"#343a55", stl4:"#4a5273", stl5:"#646d92", stl6:"#8792b5",
+    vent:"#0f0e17", rail:"#5a6488", handle:"#7c86ab",
+
+    wood1:"#2b1f18", wood2:"#4a3524", wood3:"#6b4c33", wood4:"#8a6544", wood5:"#a8825c",
+    cloth1:"#3a4a6b", cloth2:"#55688f", cloth3:"#7d90b8", cloth4:"#a9bad9",
+
+    on:"#4ade5e", onDim:"#1e5e2c", bad:"#f2555a", badDim:"#6b1f24", off:"#2a2f45",
     fCore:"#fff6c2", fHot:"#ffe066", fMid:"#feae34", fEdge:"#e43b44",
     fDark:"#a02c2c", smoke:"#4a5878",
     water:"#4aa8e8", waterLit:"#9fdcff", bucket:"#7a6a58", bucketRim:"#a89680",
     steam:"#c0cbdc",
-    neonHot:"#ff5cc8", neonCore:"#ffd6f2", neonDim:"#8a3a6e", neonDead:"#33263a",
-    tube:"#241c2c", cable:"#3d3550", cableLit:"#544a68",
-    ledOn:"#e43b44", ledDim:"#4a1d22", bezel:"#1a1622", bezelTop:"#2c2636",
-    counter:"#4a4256", counterTop:"#6b6178", hob:"#2a2432", pot:"#8b9bb4",
-    chairA:"#463a52", chairB:"#574868", book:"#a8524a", bookB:"#4a6ea8",
+    counter:"#3b3550", counterTop:"#5c5578", counterLit:"#7a7398", hob:"#1a1622", pot:"#8792b5",
+    chairA:"#3a2f46", chairB:"#4e4060", chairC:"#66557c",
+    book:"#a8524a", bookB:"#4a6ea8", bookC:"#6ea85a",
     skyDay:"#6f9fd0", skyDusk:"#8a6a8c", skyNight:"#141d33",
     sun:"#ffe9a8", moon:"#dfe6f2", star:"#c0cbdc", cloud:"#8ea6c4",
-    rain:"#7fb0e0", snow:"#e8f0ff", frame:"#3a3040",
-    hair:"#4a3526", skin:"#eec39a", shirt:"#96603c", pants:"#39405e",
-    boot:"#181425", dark:"#141020", txt:"#c0cbdc", dim:"#5a6988",
+    rain:"#7fb0e0", snow:"#e8f0ff", frame:"#2a2436", frameLit:"#443c55",
+    neonHot:"#ff5cc8", neonCore:"#ffd6f2", neonDim:"#8a3a6e", neonDead:"#33263a",
+    tube:"#241c2c", cable:"#3d3550", cableLit:"#544a68",
+    ledOn:"#f2555a", ledDim:"#4a1d22", bezel:"#16131f", bezelTop:"#2c2636",
+    // Fred: warm against a cool room, with enough steps to shade at 18px wide
+    hair1:"#2b1c12", hair2:"#4a3526", hair3:"#6b4d36",
+    skin1:"#b57a52", skin2:"#e0a578", skin3:"#f2c9a0",
+    shirt1:"#5e3a20", shirt2:"#8a5730", shirt3:"#b0764a",
+    pant1:"#232840", pant2:"#343c5c", boot:"#15121f",
+    txt:"#c9d4e8", dim:"#5a6488", rug:"#2a2f47", rugLit:"#39405e",
+    quilt:"#55688f", pillow:"#a9bad9", bedFrame:"#4a3524", bedTop:"#6b4c33",
+    rackEdge:"#0d0c14", rackTop:"#646d92", rackFace:"#343a55", rackLit:"#4a5273",
+    wallCap:"#4a4d70", wall:"#242439", floorA:"#262940", floorB:"#2f334e",
+    dark:"#0d0c14",
   };
-
   // --- character sprites: 12 wide, 18 tall, one char per pixel -------------
   // Two leg positions per direction. The stride is carried by swapping the legs
   // AND lifting the whole sprite 1px — animating legs alone reads as shuffling.
   const SPR = {
     down: [
-      "....hhhh....", "..hhhhhhhh..", "..hhhhhhhh..", "..hssssssh..",
-      "..hsEssEsh..", "..hssssssh..", "...ssssss...", "..kCCCCCCk..",
-      ".kCCCCCCCCk.", ".sCCCCCCCCs.", ".sCCCCCCCCs.", ".kCCCCCCCCk.",
-      "..CCCCCCCC..", "..PPPPPPPP..", "..PPP..PPP..", "..PPP..PPP..",
-      "..bb....bb..", "..bb....bb..",
+      "......hhhhhh......","....hhhhhhhhhh....","...thhhhhhhhhhH...","..thhhhhhhhhhhhH..",
+      "..thhSSSSSSSShhH..","..hSSSSSSSSSSssH..","..hSSEESSSSEESsH..","..hSSEESSSSEESsH..",
+      "..hSSSSSSSSSSssH..","..hSSSSddddSSssH..","...hSSSSSSSSssH...","......SSSSss......",
+      "...kLCCCCCCCCck...","..kLCCCCCCCCCCck..","..SLCCCCCCCCCCcd..","..SLCCCCCCCCCCcd..",
+      "..SLCCCCCCCCCCcd..","..kLCCCCCCCCCCck..","...LCCCCCCCCCCc...","...LCCCCCCCCCCc...",
+      "...PPPPPPPPPPpp...","...PPPPPPPPPPpp...","...PPPPP..PPPpp...","...PPPPP..PPPpp...",
+      "...PPPP....PPpp...","...bbbb....bbbb...","...bbbb....bbbb...",
     ],
     up: [
-      "....hhhh....", "..hhhhhhhh..", "..hhhhhhhh..", "..hhhhhhhh..",
-      "..hhhhhhhh..", "..hhhhhhhh..", "...hhhhhh...", "..kCCCCCCk..",
-      ".kCCCCCCCCk.", ".sCCCCCCCCs.", ".sCCCCCCCCs.", ".kCCCCCCCCk.",
-      "..CCCCCCCC..", "..PPPPPPPP..", "..PPP..PPP..", "..PPP..PPP..",
-      "..bb....bb..", "..bb....bb..",
+      "......hhhhhh......","....hhhhhhhhhh....","...thhhhhhhhhhH...","..thhhhhhhhhhhhH..",
+      "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..",
+      "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","...hhhhhhhhhhhH...","......hhhhhh......",
+      "...kLCCCCCCCCck...","..kLCCCCCCCCCCck..","..SLCCCCCCCCCCcd..","..SLCCCCCCCCCCcd..",
+      "..SLCCCCCCCCCCcd..","..kLCCCCCCCCCCck..","...LCCCCCCCCCCc...","...LCCCCCCCCCCc...",
+      "...PPPPPPPPPPpp...","...PPPPPPPPPPpp...","...PPPPP..PPPpp...","...PPPPP..PPPpp...",
+      "...PPPP....PPpp...","...bbbb....bbbb...","...bbbb....bbbb...",
     ],
     side: [
-      "...hhhh.....", "..hhhhhh....", "..hhhhhhh...", "..hhssssh...",
-      "..hhsEsss...", "..hhssssh...", "...ssssh....", "..kCCCCk....",
-      "..kCCCCCk...", "..CCCCCCs...", "..CCCCCCs...", "..kCCCCk....",
-      "..CCCCCC....", "..PPPPPP....", "..PPPP......", "..PPPP......",
-      "..bbb.......", "..bbb.......",
+      ".....hhhhhh.......","...hhhhhhhhhh.....","..thhhhhhhhhhH....",".thhhhhhhhhhhhH...",
+      ".thhhSSSSSSSSh....",".thhSSSSSSSSSs....",".thhSSEESSSSs.....",".thhSSEESSSSs.....",
+      ".thhSSSSSSSSs.....",".thhSSSSddSSs.....","..hhSSSSSSSs......",".....SSSSss.......",
+      "...kLCCCCCCck.....","..kLCCCCCCCCck....","..SLCCCCCCCCCd....","..SLCCCCCCCCCd....",
+      "..SLCCCCCCCCcd....","..kLCCCCCCCCck....","...LCCCCCCCCc.....","...LCCCCCCCCc.....",
+      "...PPPPPPPPp......","...PPPPPPPPp......","...PPPPPPpp.......","...PPPPPPpp.......",
+      "...PPPPPpp........","...bbbbbb.........","...bbbbbb.........",
     ],
   };
-  // Legs-apart variant: only the final four rows differ.
+  // Legs apart: the final six rows swap, and the whole sprite lifts 1px. Moving
+  // legs alone reads as a shuffle; lifting the body is what reads as a stride.
   const LEGS_APART = {
-    down: ["..PPP..PPP..", ".PPP....PPP.", ".bb......bb.", ".bb......bb."],
-    up:   ["..PPP..PPP..", ".PPP....PPP.", ".bb......bb.", ".bb......bb."],
-    side: ["..PPPP......", ".PPPPP......", ".bb..bb.....", ".bb..bb....."],
+    down: ["...PPPPP..PPPpp...","..PPPPP....PPPpp..","..PPPP......PPpp..",
+           "..bbbb......bbbb..","..bbbb......bbbb..","..................",],
+    up:   ["...PPPPP..PPPpp...","..PPPPP....PPPpp..","..PPPP......PPpp..",
+           "..bbbb......bbbb..","..bbbb......bbbb..","..................",],
+    side: ["...PPPPPPpp.......","..PPPPPPpp........","..PPPPpp..........",
+           "..bbbb...bbb......","..bbbb...bbb......","..................",],
   };
-  // Seated at the terminal, seen from behind, hands out on the desk. Two frames
-  // that differ only in the arms -- at 12px wide that reads as typing.
-  const SIT = [
-    ["....hhhh....", "..hhhhhhhh..", "..hhhhhhhh..", "..hhhhhhhh..",
-     "...hhhhhh...", "..kCCCCCCk..", ".kCCCCCCCCk.", ".sCCCCCCCCs.",
-     ".sCCCCCCCCs.", "..CCCCCCCC..", "..PPPPPPPP..", "..PPP..PPP.."],
-    ["....hhhh....", "..hhhhhhhh..", "..hhhhhhhh..", "..hhhhhhhh..",
-     "...hhhhhh...", "..kCCCCCCk..", ".kCCCCCCCCk.", "s.CCCCCCCC.s",
-     ".sCCCCCCCCs.", "..CCCCCCCC..", "..PPPPPPPP..", "..PPP..PPP.."],
-  ];
-  // Crouched at a rack with an arm raised to a slot. Read at a glance as
-  // "he is doing something to that machine" rather than merely standing by it.
-  const INSPECT = [
-    ["............", "....hhhh....", "..hhhhhhhh..", "..hhhhhhhh..",
-     "..hhhhhhhh..", "...hhhhhh...", "..kCCCCCCk..", ".sCCCCCCCCk.",
-     ".sCCCCCCCCs.", "..CCCCCCCC..", "..PPPPPPPP..", "..PPP..PPP..",
-     "..bb....bb..", "..bb....bb.."],
-    ["....s.......", "....hhhh....", "..hhhhhhhh..", "..hhhhhhhh..",
-     "..hhhhhhhh..", "...hhhhhh...", "..kCCCCCCk..", "..CCCCCCCCk.",
-     ".sCCCCCCCCs.", "..CCCCCCCC..", "..PPPPPPPP..", "..PPP..PPP..",
-     "..bb....bb..", "..bb....bb.."],
-  ];
-  // Asleep is a dedicated pose, never a rotated walk frame. 20x9, head at left.
+  // Asleep: a dedicated pose, lying under the quilt with the head on the pillow.
+  // 30x14, head at the left, and the quilt line does the work of a body.
   const SLEEP = [
-    ".....hhhh...........", "....hssssh..........", "....hs--sh..........",
-    "....hsssss..........", ".....ssss...........", "...QQQQQQQQQQQQQ....",
-    "..QQQQQQQQQQQQQQQ...", "..QQQQQQQQQQQQQQQ...", "...QQQQQQQQQQQQQ....",
+    "........hhhhhh................","......hhhhhhhhhh..............",
+    ".....thhSSSSSShH..............",".....thSSSSSSSSH..............",
+    ".....thSS--SS-SH..............",".....thSSSSSSSSH..............",
+    "......hSSSSSSH................","......QQQQQQQQQQQQQQQQQQQQ....",
+    ".....QQQQQQQQQQQQQQQQQQQQQQ...",".....QQQQQQQQQQQQQQQQQQQQQQ...",
+    ".....qQQQQQQQQQQQQQQQQQQQQq...",".....qqQQQQQQQQQQQQQQQQQQqq...",
+    "......qqqqqqqqqqqqqqqqqqqq....","..............................",
   ];
-  const PX = {h:C.hair, s:C.skin, E:C.ink, C:C.shirt, P:C.pants, b:C.boot,
-              k:C.dark, Q:C.quilt, "-":C.ink};
+  const PX = {
+    h:C.hair2, H:C.hair1, t:C.hair3,
+    s:C.skin2, S:C.skin3, d:C.skin1, E:C.ink,
+    C:C.shirt2, L:C.shirt3, c:C.shirt1,
+    P:C.pant2, p:C.pant1, b:C.boot, k:C.ink,
+    Q:C.quilt, q:C.cloth1, "-":C.ink,
+  };
 
   function blit(rows, x, y, flip) {
     x = Math.round(x); y = Math.round(y);
@@ -135,22 +147,22 @@
   }
 
   // --- room geometry -------------------------------------------------------
-  const WALL_H = 46, FLOOR_B = 192;           // taller wall, to host a real window
-  const BUNK = {x:6, y:50, w:102, h:138};     // the studio
-  const BED  = {x:14, y:58, w:38, h:46};      // properly sized now
-  const WINDOW  = {x:24, y:6, w:64, h:34};    // ~20% of canvas width
-  const KITCHEN = {x:66, y:58, w:38, h:30};   // its own corner, away from the bed
-  const CHAIR   = {x:70, y:128, w:22, h:22};
-  const SHELF   = {x:12, y:112, w:9, h:28};
-  const DOOR = {y0:158, y1:186};
-  const RACK_W = 18, RACK_H = 32, TOP_H = 6;
-  const ROW_A_Y = 104, ROW_B_Y = 168;
-  const RACK_X = [130, 176, 222, 268];
-  const AISLE_MAIN = 128, AISLE_FRONT = 184;
-  const GAPS = [122, 162, 208, 254, 298];
-  const DOOR_X = BUNK.x + BUNK.w + 12;
-  const SIGN  = {x:132, y:9,  w:58, h:14};    // neon, mounted on the back wall
-  const CLOCK = {x:246, y:12, w:40, h:20};
+  const WALL_H = 70, FLOOR_B = 288;
+  const BUNK = {x:9, y:76, w:154, h:206};
+  const BED  = {x:21, y:88, w:58, h:70};
+  const WINDOW  = {x:36, y:10, w:96, h:50};
+  const KITCHEN = {x:100, y:88, w:56, h:44};
+  const CHAIR   = {x:106, y:194, w:34, h:34};
+  const SHELF   = {x:18, y:170, w:13, h:42};
+  const DOOR = {y0:238, y1:280};
+  const RACK_W = 27, RACK_H = 48, TOP_H = 9;
+  const ROW_A_Y = 156, ROW_B_Y = 252;
+  const RACK_X = [196, 264, 332, 400];
+  const AISLE_MAIN = 192, AISLE_FRONT = 276;
+  const GAPS = [183, 243, 312, 381, 447];
+  const DOOR_X = BUNK.x + BUNK.w + 18;
+  const SIGN  = {x:200, y:14, w:87, h:21};
+  const CLOCK = {x:370, y:18, w:60, h:30};
 
   let racks = [];   // {node, x, base, guests:[{name,status}]}
   const leds = [];
@@ -171,7 +183,7 @@
       for (let s = 0; s < 6; s++) {
         const g = r.guests[s];
         leds.push({
-          x: r.x + RACK_W - 3, y: top + 2 + s * 3,
+          x: r.x + RACK_W - 7, y: top + 4 + s * 6,
           color: !g ? C.off : g.status === "running" ? C.on : C.bad,
           period: PERIODS[(ri + s) % PERIODS.length],
           phase: (ri * 137 + s * 61) % 1000,
@@ -196,100 +208,184 @@
     const b = bg.getContext("2d");
     b.fillStyle = C.deep; b.fillRect(0, 0, W, H);
 
-    b.fillStyle = C.wall;    b.fillRect(0, 0, W, WALL_H);
-    b.fillStyle = C.wallCap; b.fillRect(0, WALL_H - 2, W, 2);
-    b.fillStyle = C.deep;
-    for (let x = 8; x < W; x += 24) b.fillRect(x, 4, 1, WALL_H - 8);
+    // --- back wall: panelled, with conduit. Flat walls are what made the last
+    // pass read as a diagram; the panel seams and the pipe run give the eye
+    // something to measure the room against.
+    b.fillStyle = C.wall2; b.fillRect(0, 0, W, WALL_H);
+    for (let x = 0; x < W; x += 40) {
+      b.fillStyle = C.wall3; b.fillRect(x, 2, 38, WALL_H - 6);
+      b.fillStyle = C.wall4; b.fillRect(x, 2, 38, 1);
+      b.fillStyle = C.wall1; b.fillRect(x + 37, 3, 1, WALL_H - 7);
+      b.fillStyle = C.wall1; b.fillRect(x, WALL_H - 4, 38, 1);
+    }
+    b.fillStyle = C.wall5; b.fillRect(0, WALL_H - 3, W, 3);   // lit top of the skirting
+    b.fillStyle = C.wall1; b.fillRect(0, WALL_H, W, 2);
+    // conduit run along the wall, with brackets
+    b.fillStyle = C.stl2; b.fillRect(0, 8, W, 3);
+    b.fillStyle = C.stl4; b.fillRect(0, 8, W, 1);
+    for (let x = 14; x < W; x += 46) { b.fillStyle = C.stl1; b.fillRect(x, 7, 2, 5); }
 
-    // Floor on a two-shade checker with sparse scuffs, so the eye has something
-    // to latch onto other than the grid.
-    for (let y = WALL_H; y < FLOOR_B; y += TILE) {
+    // --- floor: raised panels with worn edges and a lit upper-left corner per
+    // tile, so the grid reads as physical panels rather than a checkerboard.
+    for (let y = WALL_H + 2; y < FLOOR_B; y += TILE) {
       for (let x = 0; x < W; x += TILE) {
-        b.fillStyle = ((x / TILE + y / TILE) & 1) ? C.floorA : C.floorB;
+        const h = hash2(x, y);
+        b.fillStyle = h > 0.55 ? C.flr3 : C.flr2;
         b.fillRect(x, y, TILE, TILE);
-        const r = hash2(x, y);
-        if (r > 0.86) {
+        b.fillStyle = C.flr4; b.fillRect(x + 1, y + 1, TILE - 2, 1);
+        b.fillStyle = C.flr1; b.fillRect(x, y + TILE - 1, TILE, 1);
+        b.fillRect(x + TILE - 1, y, 1, TILE);
+        if (h > 0.86) {                      // wear, clustered not scattered
           b.fillStyle = C.scuff;
-          b.fillRect(x + 3 + ((r * 9) | 0), y + 5 + ((r * 7) | 0), 2, 1);
+          for (let k = 0; k < 3; k++)
+            b.fillRect(x + 4 + ((h * 13 + k * 3) | 0) % (TILE - 6), y + 5 + (k * 4), 2, 1);
         }
+        if (h < 0.08) { b.fillStyle = C.flr5; b.fillRect(x + 3, y + 3, 2, 2); }  // stud
       }
     }
-    // Raised-floor panels are coarser than the tile grid; the heavier seam every
-    // two tiles gives a 32px rhythm so the 16px grid stops dominating.
-    b.fillStyle = C.seam;
-    for (let y = WALL_H; y <= FLOOR_B; y += TILE) b.fillRect(0, y, W, 1);
-    for (let x = 0; x <= W; x += TILE) b.fillRect(x, WALL_H, 1, FLOOR_B - WALL_H);
-    b.fillStyle = C.deep;
-    for (let y = WALL_H; y <= FLOOR_B; y += TILE * 2) b.fillRect(0, y, W, 1);
-    b.fillRect(0, FLOOR_B, W, H - FLOOR_B);
+    b.fillStyle = C.deep; b.fillRect(0, FLOOR_B, W, H - FLOOR_B);
+    b.fillStyle = C.wall1; b.fillRect(0, FLOOR_B, W, 2);
 
-    // bunk room: rug, partition wall broken by a doorway onto the front aisle
-    b.fillStyle = C.rug; b.fillRect(BUNK.x, BUNK.y, BUNK.w, BUNK.h);
-    b.fillStyle = C.wall;
-    b.fillRect(BUNK.x + BUNK.w, BUNK.y - 4, 3, DOOR.y0 - BUNK.y + 4);
-    b.fillRect(BUNK.x + BUNK.w, DOOR.y1, 3, FLOOR_B - DOOR.y1);
-    b.fillRect(BUNK.x - 3, BUNK.y - 4, 3, BUNK.h + 4);
-    b.fillStyle = C.wallCap; b.fillRect(BUNK.x + BUNK.w, BUNK.y - 4, 3, 2);
-
-    // bed, in the same 3/4 as everything else: top face then the front rail
-    b.fillStyle = C.rackEdge; b.fillRect(BED.x - 1, BED.y - 1, BED.w + 2, BED.h + 2);
-    b.fillStyle = C.bedFrame; b.fillRect(BED.x, BED.y, BED.w, BED.h);
-    b.fillStyle = C.bedTop;   b.fillRect(BED.x + 1, BED.y + 1, BED.w - 2, BED.h - 6);
-    b.fillStyle = C.pillow;   b.fillRect(BED.x + 3, BED.y + 3, BED.w - 6, 7);
-
-    // desk with a terminal, so the bunk reads as somewhere lived-in rather than
-    // a blank slab. The screen is an emissive and gets its glow at draw time.
-    const D = {x: BUNK.x + 8, y: BUNK.y + 78, w: 44, h: 20};
-    b.fillStyle = C.rackEdge; b.fillRect(D.x - 1, D.y - 1, D.w + 2, D.h + 2);
-    b.fillStyle = C.rackFace; b.fillRect(D.x, D.y, D.w, D.h);
-    b.fillStyle = C.rackTop;  b.fillRect(D.x, D.y, D.w, 4);
-    b.fillStyle = C.rackEdge; b.fillRect(D.x + 8, D.y - 10, 18, 11);  // monitor
-    b.fillStyle = C.vent;     b.fillRect(D.x + 9, D.y - 9, 16, 9);
-    b.fillStyle = C.rackEdge; b.fillRect(D.x + 32, D.y + 7, 5, 5);    // mug
-    b.fillStyle = C.bedFrame; b.fillRect(D.x + 33, D.y + 8, 3, 3);
-    b.fillStyle = C.rackEdge; b.fillRect(D.x + 14, D.y + 22, 13, 10); // chair
-    b.fillStyle = C.rug;      b.fillRect(D.x + 15, D.y + 23, 11, 8);
-
-    // kitchenette, now its own corner rather than crowding the bed
-    b.fillStyle = C.rackEdge; b.fillRect(KITCHEN.x - 1, KITCHEN.y - 1, KITCHEN.w + 2, KITCHEN.h + 2);
-    b.fillStyle = C.counter;    b.fillRect(KITCHEN.x, KITCHEN.y, KITCHEN.w, KITCHEN.h);
-    b.fillStyle = C.counterTop; b.fillRect(KITCHEN.x, KITCHEN.y, KITCHEN.w, 4);
-    b.fillStyle = C.hob;
-    b.fillRect(KITCHEN.x + 4, KITCHEN.y + 9, 7, 7);
-    b.fillRect(KITCHEN.x + 15, KITCHEN.y + 9, 7, 7);
-    b.fillStyle = C.rackEdge;   b.fillRect(KITCHEN.x + 3, KITCHEN.y + 21, KITCHEN.w - 6, 1);
-    b.fillStyle = C.counterTop; b.fillRect(KITCHEN.x + 26, KITCHEN.y + 8, 9, 12);  // sink
-    b.fillStyle = C.hob;        b.fillRect(KITCHEN.x + 28, KITCHEN.y + 10, 5, 8);
-
-    // armchair, facing the room
-    b.fillStyle = C.rackEdge; b.fillRect(CHAIR.x - 1, CHAIR.y - 1, CHAIR.w + 2, CHAIR.h + 2);
-    b.fillStyle = C.chairA;   b.fillRect(CHAIR.x, CHAIR.y, CHAIR.w, CHAIR.h);
-    b.fillStyle = C.chairB;   b.fillRect(CHAIR.x + 2, CHAIR.y + 4, CHAIR.w - 4, CHAIR.h - 6);
-    b.fillStyle = C.chairA;
-    b.fillRect(CHAIR.x, CHAIR.y + 4, 3, CHAIR.h - 5);                 // arms
-    b.fillRect(CHAIR.x + CHAIR.w - 3, CHAIR.y + 4, 3, CHAIR.h - 5);
-    b.fillStyle = C.quilt;                                            // cushion
-    b.fillRect(CHAIR.x + 4, CHAIR.y + CHAIR.h - 8, CHAIR.w - 8, 4);
-    b.fillStyle = C.rackEdge;
-    b.fillRect(CHAIR.x + 3, CHAIR.y + 3, CHAIR.w - 6, 1);             // back seam
-
-    // a few books
-    b.fillStyle = C.rackEdge; b.fillRect(SHELF.x - 1, SHELF.y - 1, SHELF.w + 2, SHELF.h + 2);
-    b.fillStyle = C.bedFrame; b.fillRect(SHELF.x, SHELF.y, SHELF.w, SHELF.h);
-    for (let i = 0; i < 5; i++) {
-      b.fillStyle = i % 2 ? C.book : C.bookB;
-      b.fillRect(SHELF.x + 1 + (i % 3), SHELF.y + 2 + i * 3, 3, 2);
+    // --- cable runs snaking between the rack rows, Noita-ish clutter that also
+    // happens to be what a real floor like this looks like
+    b.fillStyle = C.stl1;
+    for (const [y0, x0, x1] of [[AISLE_MAIN + 12, 190, 430], [AISLE_FRONT + 6, 210, 400]]) {
+      for (let x = x0; x < x1; x++) {
+        b.fillRect(x, y0 + Math.round(Math.sin(x / 17) * 3), 1, 2);
+      }
     }
 
-    b.fillStyle = C.dim; b.font = "5px ui-monospace, monospace"; b.textAlign = "left";
-    b.fillText("bunk", BUNK.x + 4, BUNK.y + BUNK.h - 5);
+    signHardware(b);
+    studio(b);
+    lightPools(b);
+  }
 
-    // Floor light pools under the ceiling fixtures, built from nested additive
-    // rects. A dim room with a few pools of light hides more tile repetition
-    // than any amount of tile variation, and it costs almost nothing.
-    // Ellipses drawn one scanline at a time. Nested hard rectangles read as
-    // grey slabs, not light; a per-row half-width gives a real pool while
-    // staying on the pixel grid.
+  function signHardware(b) {
+    b.fillStyle = C.tube;
+    b.fillRect(SIGN.x - 3, SIGN.y - 2, SIGN.w + 6, SIGN.h + 3);
+    b.fillStyle = C.stl2; b.fillRect(SIGN.x - 3, SIGN.y - 2, SIGN.w + 6, 2);
+    b.fillStyle = C.cableLit; b.fillRect(SIGN.x - 6, SIGN.y - 5, SIGN.w + 12, 3);
+    b.fillStyle = C.cable;
+    b.fillRect(SIGN.x - 6, SIGN.y - 5, 3, 6);
+    b.fillRect(SIGN.x + SIGN.w + 3, SIGN.y - 5, 3, 6);
+
+    const drape = (x0, x1, sag, cut) => {
+      const span = x1 - x0;
+      for (let i = 0; i <= span; i++) {
+        const t = i / span;
+        const yy = SIGN.y + SIGN.h + Math.round(Math.sin(t * Math.PI) * sag);
+        b.fillStyle = C.cable; b.fillRect(x0 + i, yy, 1, 3);
+        if (i % 9 === 4) { b.fillStyle = C.cableLit; b.fillRect(x0 + i, yy, 1, 1); }
+        if (i === span && cut) {
+          b.fillStyle = C.cable;
+          for (let k = 1; k <= 9; k++) b.fillRect(x0 + span + (k > 5 ? 1 : 0), yy + k, 1, 1);
+          b.fillStyle = C.bad; b.fillRect(x0 + span + 1, yy + 10, 2, 2);   // bare copper
+        }
+      }
+    };
+    drape(SIGN.x + 6, SIGN.x + 39, 10, false);
+    drape(SIGN.x + 45, SIGN.x + 72, 7, true);
+
+    b.fillStyle = C.rackEdge; b.fillRect(CLOCK.x - 2, CLOCK.y - 2, CLOCK.w + 4, CLOCK.h + 4);
+    b.fillStyle = C.bezel;    b.fillRect(CLOCK.x, CLOCK.y, CLOCK.w, CLOCK.h);
+    b.fillStyle = C.bezelTop; b.fillRect(CLOCK.x, CLOCK.y, CLOCK.w, 3);
+    b.fillStyle = C.stl1;     b.fillRect(CLOCK.x, CLOCK.y + CLOCK.h - 2, CLOCK.w, 2);
+    b.fillStyle = C.ink;      b.fillRect(CLOCK.x + 5, CLOCK.y + 8, CLOCK.w - 10, 14);
+    b.fillStyle = C.cable;    b.fillRect(CLOCK.x + CLOCK.w - 9, CLOCK.y + CLOCK.h + 2, 2, 8);
+  }
+
+  function studio(b) {
+    // rug, with a border and a woven centre -- Stardew's trick of making the
+    // floor of a living space read differently from the floor of a workspace
+    b.fillStyle = C.rug; b.fillRect(BUNK.x, BUNK.y, BUNK.w, BUNK.h);
+    b.fillStyle = C.rugLit; b.fillRect(BUNK.x + 3, BUNK.y + 3, BUNK.w - 6, 2);
+    for (let y = BUNK.y + 8; y < BUNK.y + BUNK.h - 4; y += 6) {
+      b.fillStyle = C.rugLit; b.fillRect(BUNK.x + 5, y, BUNK.w - 10, 1);
+    }
+    b.fillStyle = C.wall1;
+    b.fillRect(BUNK.x + BUNK.w, BUNK.y - 6, 4, DOOR.y0 - BUNK.y + 6);
+    b.fillRect(BUNK.x + BUNK.w, DOOR.y1, 4, FLOOR_B - DOOR.y1);
+    b.fillRect(BUNK.x - 4, BUNK.y - 6, 4, BUNK.h + 6);
+    b.fillStyle = C.wall4; b.fillRect(BUNK.x + BUNK.w, BUNK.y - 6, 4, 2);
+
+    // bed: frame, mattress, quilt with a fold, two pillows
+    b.fillStyle = C.rackEdge; b.fillRect(BED.x - 2, BED.y - 2, BED.w + 4, BED.h + 4);
+    b.fillStyle = C.wood2;    b.fillRect(BED.x, BED.y, BED.w, BED.h);
+    b.fillStyle = C.wood4;    b.fillRect(BED.x, BED.y, BED.w, 3);
+    b.fillStyle = C.wood3;    b.fillRect(BED.x + 2, BED.y + 3, BED.w - 4, BED.h - 9);
+    b.fillStyle = C.pillow;   b.fillRect(BED.x + 5, BED.y + 5, BED.w - 10, 12);
+    b.fillStyle = C.cloth4;   b.fillRect(BED.x + 5, BED.y + 5, BED.w - 10, 2);
+    b.fillStyle = C.quilt;    b.fillRect(BED.x + 3, BED.y + 20, BED.w - 6, BED.h - 26);
+    b.fillStyle = C.cloth3;   b.fillRect(BED.x + 3, BED.y + 20, BED.w - 6, 2);
+    b.fillStyle = C.cloth1;   b.fillRect(BED.x + 3, BED.y + BED.h - 8, BED.w - 6, 2);
+
+    // kitchen: counter, two hobs with rings, a sink, a splashback
+    b.fillStyle = C.rackEdge; b.fillRect(KITCHEN.x - 2, KITCHEN.y - 2, KITCHEN.w + 4, KITCHEN.h + 4);
+    b.fillStyle = C.counter;    b.fillRect(KITCHEN.x, KITCHEN.y, KITCHEN.w, KITCHEN.h);
+    b.fillStyle = C.counterTop; b.fillRect(KITCHEN.x, KITCHEN.y, KITCHEN.w, 5);
+    b.fillStyle = C.counterLit; b.fillRect(KITCHEN.x, KITCHEN.y, KITCHEN.w, 1);
+    for (const hx of [KITCHEN.x + 7, KITCHEN.x + 24]) {
+      b.fillStyle = C.hob;  b.fillRect(hx, KITCHEN.y + 12, 12, 12);
+      b.fillStyle = C.stl3; b.fillRect(hx + 2, KITCHEN.y + 14, 8, 1);
+      b.fillRect(hx + 2, KITCHEN.y + 21, 8, 1);
+      b.fillRect(hx + 1, KITCHEN.y + 16, 1, 4);
+      b.fillRect(hx + 10, KITCHEN.y + 16, 1, 4);
+    }
+    b.fillStyle = C.stl2; b.fillRect(KITCHEN.x + 40, KITCHEN.y + 11, 13, 16);
+    b.fillStyle = C.stl4; b.fillRect(KITCHEN.x + 41, KITCHEN.y + 12, 11, 2);
+    b.fillStyle = C.stl5; b.fillRect(KITCHEN.x + 46, KITCHEN.y + 6, 1, 6);   // tap
+    b.fillRect(KITCHEN.x + 46, KITCHEN.y + 6, 4, 1);
+    b.fillStyle = C.wall1; b.fillRect(KITCHEN.x + 3, KITCHEN.y + KITCHEN.h - 6, KITCHEN.w - 6, 1);
+
+    // desk + monitor + mug + chair
+    const D = {x: BUNK.x + 12, y: BUNK.y + 118, w: 66, h: 30};
+    b.fillStyle = C.rackEdge; b.fillRect(D.x - 2, D.y - 2, D.w + 4, D.h + 4);
+    b.fillStyle = C.wood2;    b.fillRect(D.x, D.y, D.w, D.h);
+    b.fillStyle = C.wood4;    b.fillRect(D.x, D.y, D.w, 4);
+    b.fillStyle = C.stl1;     b.fillRect(D.x + 12, D.y - 16, 27, 17);
+    b.fillStyle = C.stl3;     b.fillRect(D.x + 13, D.y - 15, 25, 15);
+    b.fillStyle = C.stl2;     b.fillRect(D.x + 22, D.y + 1, 7, 3);           // stand
+    b.fillStyle = C.wood5;    b.fillRect(D.x + 48, D.y + 10, 7, 8);          // mug
+    b.fillStyle = C.wood3;    b.fillRect(D.x + 55, D.y + 12, 2, 4);
+    b.fillStyle = C.chairA;   b.fillRect(D.x + 20, D.y + 34, 20, 15);
+    b.fillStyle = C.chairB;   b.fillRect(D.x + 22, D.y + 36, 16, 11);
+    TERMINAL = {x: D.x + 14, y: D.y - 14, w: 23, h: 13};
+
+    // armchair, seen from behind: back, arms, cushion
+    b.fillStyle = C.rackEdge; b.fillRect(CHAIR.x - 2, CHAIR.y - 2, CHAIR.w + 4, CHAIR.h + 4);
+    b.fillStyle = C.chairA;   b.fillRect(CHAIR.x, CHAIR.y, CHAIR.w, CHAIR.h);
+    b.fillStyle = C.chairB;   b.fillRect(CHAIR.x + 4, CHAIR.y + 5, CHAIR.w - 8, CHAIR.h - 9);
+    b.fillStyle = C.chairC;   b.fillRect(CHAIR.x + 4, CHAIR.y + 5, CHAIR.w - 8, 2);
+    b.fillStyle = C.chairA;
+    b.fillRect(CHAIR.x, CHAIR.y + 7, 5, CHAIR.h - 9);
+    b.fillRect(CHAIR.x + CHAIR.w - 5, CHAIR.y + 7, 5, CHAIR.h - 9);
+    b.fillStyle = C.cloth2;   b.fillRect(CHAIR.x + 6, CHAIR.y + CHAIR.h - 12, CHAIR.w - 12, 7);
+
+    // shelf of books, with uneven spines
+    b.fillStyle = C.rackEdge; b.fillRect(SHELF.x - 2, SHELF.y - 2, SHELF.w + 4, SHELF.h + 4);
+    b.fillStyle = C.wood2;    b.fillRect(SHELF.x, SHELF.y, SHELF.w, SHELF.h);
+    b.fillStyle = C.wood4;    b.fillRect(SHELF.x, SHELF.y, SHELF.w, 2);
+    const spines = [C.book, C.bookB, C.bookC, C.book, C.bookB, C.bookC, C.book];
+    for (let i = 0; i < spines.length; i++) {
+      b.fillStyle = spines[i];
+      const hgt = 4 + (i % 3);
+      b.fillRect(SHELF.x + 2 + (i % 2), SHELF.y + 3 + i * 5, SHELF.w - 5 - (i % 3), hgt);
+    }
+
+    // a plant, because every lived-in room has one
+    b.fillStyle = C.wood2; b.fillRect(BUNK.x + 128, BUNK.y + 168, 14, 12);
+    b.fillStyle = C.wood4; b.fillRect(BUNK.x + 128, BUNK.y + 168, 14, 2);
+    b.fillStyle = C.onDim;
+    for (const [dx, dy] of [[2,-8],[5,-13],[8,-9],[11,-6],[6,-6],[9,-14]])
+      b.fillRect(BUNK.x + 128 + dx, BUNK.y + 168 + dy, 3, 3);
+    b.fillStyle = C.on;
+    for (const [dx, dy] of [[5,-13],[9,-14]]) b.fillRect(BUNK.x + 128 + dx, BUNK.y + 168 + dy, 2, 2);
+
+    b.fillStyle = C.dim; b.font = "7px ui-monospace, monospace"; b.textAlign = "left";
+    b.fillText("bunk", BUNK.x + 6, BUNK.y + BUNK.h - 7);
+  }
+
+  function lightPools(b) {
     b.globalCompositeOperation = "lighter";
     b.fillStyle = "#a8bce6";
     const pool = (cx, cy, rx, ry) => {
@@ -297,174 +393,68 @@
         const k = 1 - (dy * dy) / (ry * ry);
         if (k <= 0) continue;
         const hw = Math.round(rx * Math.sqrt(k));
-        b.globalAlpha = 0.075 * k * k;          // squared falloff: bright core, soft edge
+        b.globalAlpha = 0.075 * k * k;
         b.fillRect(Math.round(cx - hw), Math.round(cy + dy), hw * 2, 1);
       }
     };
-    pool(176, AISLE_MAIN - 4, 72, 19);
-    pool(262, AISLE_MAIN - 4, 58, 17);
-    pool(206, AISLE_FRONT - 2, 84, 18);
-    pool(BUNK.x + 36, BUNK.y + 92, 38, 16);
+    pool(264, AISLE_MAIN - 6, 108, 28);
+    pool(393, AISLE_MAIN - 6, 87, 25);
+    pool(309, AISLE_FRONT - 3, 126, 27);
+    pool(BUNK.x + 54, BUNK.y + 138, 57, 24);
     b.globalAlpha = 1; b.globalCompositeOperation = "source-over";
-    TERMINAL = {x: D.x + 9, y: D.y - 9, w: 16, h: 9};
-  }
-
-  // Two octaves of the stable hash: a slow one that makes the flame writhe and a
-  // fast one that makes it crackle. One octave alone either strobes or crawls.
-  function flameHeight(seed, i, w, now) {
-    const slow = hash2(seed + i * 7, Math.floor(now / 110));
-    const fast = hash2(seed + i * 131, Math.floor(now / 55));
-    const taper = 1 - Math.abs((i / Math.max(1, w - 1)) * 2 - 1);   // tallest mid-rack
-    return Math.round((2 + (slow * 0.65 + fast * 0.35) * 11) * (0.3 + taper));
-  }
-
-  // --- the bucket brigade ---------------------------------------------------
-  // One throw cycle, derived entirely from the clock so it needs no state:
-  // wind up, throw, water arcs over, lands, steam. The fire is knocked down
-  // where the water hits and comes straight back, because the rack is burning
-  // until somebody acks the escalation -- not until Fred works harder.
-  const THROW_MS = 1700, RELEASE = 0.42, FLIGHT = 0.34;
-
-  function throwPhase(now, seed) {
-    return ((now + seed * 211) % THROW_MS) / THROW_MS;
-  }
-
-  // 0 while the water is in the air, rising to 1 over the seconds after it
-  // lands, so the flames recover rather than snapping back.
-  function doused(now, seed) {
-    const p = throwPhase(now, seed);
-    const land = RELEASE + FLIGHT;
-    if (p < land) return 1;
-    return Math.min(1, 0.25 + (p - land) / (1 - land) * 0.9);
-  }
-
-  // He is only fighting the rack he actually walked to.
-  function fightingHere(r) {
-    return fred.activity === "fight" && !walking && !fred.asleep &&
-      Math.abs(fred.x - (r.x + RACK_W / 2)) < 12 &&
-      Math.abs(fred.y - (r.base === ROW_A_Y ? AISLE_MAIN : AISLE_FRONT)) < 8;
-  }
-
-  function drawBucket(fx, fy, now, seed) {
-    const p = throwPhase(now, seed);
-    // low at the side, swung up and over for the throw, then back down
-    let bx = fx + 5, by = fy - 9, full = true;
-    if (p > RELEASE - 0.12 && p < RELEASE) { bx = fx + 4; by = fy - 15; }
-    else if (p >= RELEASE && p < RELEASE + 0.18) { bx = fx + 2; by = fy - 17; full = false; }
-    else if (p >= RELEASE + 0.18) { bx = fx + 5; by = fy - 9; full = false; }
-    bx = Math.round(bx); by = Math.round(by);
-    ctx.fillStyle = C.bucketRim; ctx.fillRect(bx, by, 4, 1);
-    ctx.fillStyle = C.bucket;
-    ctx.fillRect(bx, by + 1, 1, 3); ctx.fillRect(bx + 3, by + 1, 1, 3);
-    ctx.fillRect(bx + 1, by + 4, 2, 1);
-    if (full) { ctx.fillStyle = C.water; ctx.fillRect(bx + 1, by + 1, 2, 3); }
-  }
-
-  function drawWater(fx, fy, tx, ty, now, seed) {
-    const p = throwPhase(now, seed);
-    if (p < RELEASE || p > RELEASE + FLIGHT) return;
-    const t = (p - RELEASE) / FLIGHT;
-    const sx = fx + 2, sy = fy - 16;
-    for (let i = 0; i < 7; i++) {
-      const tt = Math.max(0, t - i * 0.05);
-      if (tt <= 0) continue;
-      const x = sx + (tx - sx) * tt + (i - 3) * 0.6;
-      // a lobbed arc: up early, down onto the rack
-      const y = sy + (ty - sy) * tt - Math.sin(tt * Math.PI) * 13;
-      ctx.fillStyle = i % 3 === 0 ? C.waterLit : C.water;
-      ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
-    }
-    // splash on arrival
-    if (t > 0.86) {
-      ctx.fillStyle = C.waterLit;
-      for (let i = 0; i < 5; i++) {
-        const s = (t - 0.86) / 0.14;
-        ctx.fillRect(Math.round(tx - 4 + i * 2), Math.round(ty - s * 3 - (i % 2)), 1, 1);
-      }
-    }
-  }
-
-  function drawSteam(tx, ty, now, seed) {
-    const p = throwPhase(now, seed);
-    const land = RELEASE + FLIGHT;
-    if (p < land || p > land + 0.42) return;
-    const t = (p - land) / 0.42;
-    ctx.fillStyle = C.steam;
-    ctx.globalAlpha = 0.55 * (1 - t);
-    for (let i = 0; i < 6; i++) {
-      const x = tx - 5 + ((hash2(seed + i * 17, i) * 11) | 0);
-      ctx.fillRect(Math.round(x), Math.round(ty - 2 - t * 16 - i), 1, 1);
-    }
-    ctx.globalAlpha = 1;
-  }
-
-  function drawFire(x, y, w, now, seed, wet) {
-    wet = wet === undefined ? 1 : wet;
-    for (let i = 0; i < w; i++) {
-      const h = Math.max(1, Math.round(flameHeight(seed, i, w, now) * wet));
-      for (let j = 0; j < h; j++) {
-        const f = j / Math.max(1, h);            // 0 at the base, 1 at the tip
-        ctx.fillStyle = f > 0.82 ? C.fDark : f > 0.58 ? C.fEdge
-                      : f > 0.3 ? C.fMid : f > 0.12 ? C.fHot : C.fCore;
-        ctx.fillRect(x + i, y - j, 1, 1);
-      }
-    }
-    // embers and smoke climbing out of the top, wrapping on a long cycle
-    for (let k = 0; k < 5; k++) {
-      const ph = (now / (260 + k * 70) + hash2(seed, k) * 6) % 1;
-      const ex = x + Math.round(hash2(seed + k * 31, Math.floor(now / 900 + k)) * (w - 1));
-      const ey = y - 12 - Math.round(ph * 20);
-      if (ey < 2) continue;
-      ctx.fillStyle = ph < 0.45 ? C.fMid : C.smoke;
-      ctx.fillRect(ex + (ph > 0.6 ? 1 : 0), ey, 1, 1);
-    }
-  }
-
-  function fireGlow(x, y, w, now, seed, wet) {
-    wet = wet === undefined ? 1 : wet;
-    // Elliptical and drawn per scanline: nested rectangles read as a lit box
-    // hanging over the rack, which is exactly how this looked on the first pass.
-    // It also flickers -- a steady glow reads as a lamp, not a fire.
-    const puls = (0.72 + hash2(seed, Math.floor(now / 70)) * 0.55) * wet;
-    const cx = x + w / 2, rx = w + 12, ry = 17;
-    ctx.globalCompositeOperation = "lighter";
-    ctx.fillStyle = "#ff8a3c";
-    for (let dy = -ry; dy <= ry; dy++) {
-      const k = 1 - (dy * dy) / (ry * ry);
-      if (k <= 0) continue;
-      const hw = Math.round(rx * Math.sqrt(k));
-      ctx.globalAlpha = 0.085 * k * k * puls;
-      ctx.fillRect(Math.round(cx - hw), Math.round(y + dy), hw * 2, 1);
-    }
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = "source-over";
   }
 
   function drawRack(r) {
     const top = r.base - RACK_H, x = r.x;
-    ctx.fillStyle = C.rackEdge; ctx.fillRect(x - 1, top - 1, RACK_W + 2, RACK_H + 2);
-    ctx.fillStyle = C.rackTop;  ctx.fillRect(x, top, RACK_W, TOP_H);
-    ctx.fillStyle = C.rackFace; ctx.fillRect(x, top + TOP_H, RACK_W, RACK_H - TOP_H);
-    ctx.fillStyle = C.rackLit;  ctx.fillRect(x, top + TOP_H, 2, RACK_H - TOP_H);
-    ctx.fillStyle = C.vent;
-    for (let s = 0; s < 6; s++) ctx.fillRect(x + 3, top + TOP_H + 1 + s * 3, RACK_W - 7, 2);
-    ctx.fillStyle = C.rackEdge; ctx.fillRect(x, r.base - 2, RACK_W, 2);
+    // outline in a darker version of the steel, never black -- black outlines
+    // punch holes in a dark room
+    ctx.fillStyle = C.rackEdge; ctx.fillRect(x - 2, top - 2, RACK_W + 4, RACK_H + 4);
+
+    // top face, lit from upper-left
+    ctx.fillStyle = C.stl4; ctx.fillRect(x, top, RACK_W, TOP_H);
+    ctx.fillStyle = C.stl6; ctx.fillRect(x, top, RACK_W, 1);
+    ctx.fillStyle = C.stl5; ctx.fillRect(x, top, 2, TOP_H);
+    ctx.fillStyle = C.stl2; ctx.fillRect(x + RACK_W - 2, top + 1, 2, TOP_H - 1);
+
+    // front face + mounting rails down each side
+    ctx.fillStyle = C.stl3; ctx.fillRect(x, top + TOP_H, RACK_W, RACK_H - TOP_H);
+    ctx.fillStyle = C.stl4; ctx.fillRect(x, top + TOP_H, 3, RACK_H - TOP_H);
+    ctx.fillStyle = C.stl2; ctx.fillRect(x + RACK_W - 3, top + TOP_H, 3, RACK_H - TOP_H);
+    ctx.fillStyle = C.rail;
+    for (let i = 0; i < 6; i++) {
+      ctx.fillRect(x + 1, top + TOP_H + 3 + i * 6, 1, 2);
+      ctx.fillRect(x + RACK_W - 2, top + TOP_H + 3 + i * 6, 1, 2);
+    }
+
+    // 1U units: bezel, vent mesh, a handle, and a drive bay
+    for (let u = 0; u < 6; u++) {
+      const uy = top + TOP_H + 2 + u * 6;
+      const g = r.guests[u];
+      ctx.fillStyle = C.stl2; ctx.fillRect(x + 3, uy, RACK_W - 6, 5);
+      ctx.fillStyle = C.stl4; ctx.fillRect(x + 3, uy, RACK_W - 6, 1);
+      ctx.fillStyle = C.vent;
+      for (let v = 0; v < 7; v++) ctx.fillRect(x + 6 + v * 2, uy + 2, 1, 2);
+      ctx.fillStyle = C.handle; ctx.fillRect(x + 4, uy + 2, 1, 2);
+      if (g) { ctx.fillStyle = C.stl5; ctx.fillRect(x + RACK_W - 8, uy + 1, 3, 3); }
+    }
+
+    // plinth and a contact shadow on the floor
+    ctx.fillStyle = C.stl1; ctx.fillRect(x, r.base - 3, RACK_W, 3);
+    ctx.fillStyle = "rgba(11,10,16,.42)";
+    ctx.fillRect(x - 3, r.base, RACK_W + 6, 3);
+
     ctx.fillStyle = burning.has(r.node) ? C.fMid : C.dim;
-    ctx.font = "5px ui-monospace, monospace"; ctx.textAlign = "center";
-    ctx.fillText(r.node.replace("prxy-", ""), x + RACK_W / 2, top - 2);
+    ctx.font = "7px ui-monospace, monospace"; ctx.textAlign = "center";
+    ctx.fillText(r.node.replace("prxy-", ""), x + RACK_W / 2, top - 4);
     ctx.textAlign = "left";
     if (burning.has(r.node)) {
       const seed = r.x * 31 + r.base;
-      // Knocked down while the water lands, only to climb back: he is not
-      // losing because he is bad at this, he is losing because the escalation
-      // is still unacked.
       const wet = fightingHere(r) ? doused(nowMs, seed) : 1;
       drawFire(x, top, RACK_W, nowMs, seed, wet);
-      pendingGlow.push([x, top - 6, RACK_W, seed, wet]);
+      pendingGlow.push([x, top - 9, RACK_W, seed, wet]);
       if (fightingHere(r)) pendingSteam.push([x + RACK_W / 2, top, seed]);
     }
   }
-
 
 
   // --- wall fittings ----------------------------------------------------------
@@ -853,13 +843,13 @@
   // "type" | "fight". The activity survives arrival, so he keeps doing the thing
   // until something else happens or the idle timer sends him to bed.
   const fred = {
-    x: BED.x + 8, y: BED.y + 30, dir: "down", flip: false,
+    x: BED.x + 18, y: BED.y + 46, dir: "down", flip: false,
     dist: 0, asleep: true, activity: "sleep", say: "", sayUntil: 0,
     lastEvent: Date.now(),
   };
-  const DESK_SEAT = {x: BUNK.x + 24, y: BUNK.y + 92};   // chair, below the terminal
-  const COOK_SPOT = {x: KITCHEN.x + 8, y: KITCHEN.y + KITCHEN.h + 12};
-  const READ_SPOT = {x: CHAIR.x + 7, y: CHAIR.y + CHAIR.h + 2};
+  const DESK_SEAT = {x: BUNK.x + 42, y: BUNK.y + 166};  // in front of the desk chair
+  const COOK_SPOT = {x: KITCHEN.x + 14, y: KITCHEN.y + KITCHEN.h + 20};
+  const READ_SPOT = {x: CHAIR.x + 17, y: CHAIR.y + CHAIR.h + 4};
   let unacked = 0, tl = null, walking = false;
   // A rack burns while it has an unacked escalation -- which is what "that
   // server is on fire" actually means. Cleared by an ack or an all-clear.
@@ -933,7 +923,7 @@
 
   function goSleep() {
     fred.say = "";
-    walk(BED.x + 8, BED.y + 30, null);
+    walk(BED.x + 18, BED.y + 46, null);
     if (tl) tl.call(() => { fred.asleep = true; fred.activity = "sleep"; });
     else { fred.asleep = true; }
   }
@@ -955,7 +945,7 @@
   }
 
   const ROUTINE_SPOT = {
-    sleep: () => ({x: BED.x + 8, y: BED.y + 30}),
+    sleep: () => ({x: BED.x + 18, y: BED.y + 46}),
     type:  () => ({x: DESK_SEAT.x, y: DESK_SEAT.y}),
     cook:  () => ({x: COOK_SPOT.x, y: COOK_SPOT.y}),
     read:  () => ({x: READ_SPOT.x, y: READ_SPOT.y}),
@@ -1029,31 +1019,31 @@
     // y-sort by baseline, so Fred passes behind the back row and in front of
     // the front row with no special-casing anywhere.
     const items = racks.map(r => ({sortY: r.base, sortX: r.x, r}));
-    items.push({sortY: fred.asleep ? BED.y + 14 : fred.y, sortX: fred.x, fred: true});
+    items.push({sortY: fred.asleep ? BED.y + 22 : fred.y, sortX: fred.x, fred: true});
     items.sort((a, b) => (a.sortY - b.sortY) || (a.sortX - b.sortX));
 
     for (const it of items) {
       if (!it.fred) { drawRack(it.r); continue; }
       if (fred.asleep) {
         const rise = Math.floor(now / 1000) % 2 ? -1 : 0;
-        blit(SLEEP, BED.x + 4, BED.y + 14 + rise, false);
+        blit(SLEEP, BED.x + 8, BED.y + 22 + rise, false);
         continue;
       }
-      ctx.fillStyle = "rgba(15,15,24,.45)";
-      ctx.fillRect(Math.round(fred.x) - 4, Math.round(fred.y) - 1, 9, 2);
+      ctx.fillStyle = "rgba(11,10,16,.45)";
+      ctx.fillRect(Math.round(fred.x) - 7, Math.round(fred.y) - 2, 14, 3);
 
       // Standing still is the least informative thing he can do, so every
       // arrival hands off to a pose that says what he is actually doing.
       if (!walking && fred.activity === "read") {
-        blit(READ[Math.floor(now / 1500) % 2], fred.x - 6, fred.y - 14, false);
-        drawBook(fred.x - 6, fred.y, now);
+        blit(SPR.side.slice(0, 22), fred.x - 9, fred.y - 22, fred.flip);
+        drawBook(fred.x - 9, fred.y, now);
       } else if (!walking && fred.activity === "cook") {
         const stir = Math.floor(now / 300) % 2;
-        blit(SPR.up, fred.x - 6, fred.y - 18 - stir, false);
+        blit(SPR.up, fred.x - 9, fred.y - 27 - stir, false);
       } else if (!walking && fred.activity === "type") {
-        blit(SIT[Math.floor(now / 190) % 2], fred.x - 6, fred.y - 12, false);
+        blit(SPR.up.slice(0, 20), fred.x - 9, fred.y - 20, false);
       } else if (!walking && fred.activity === "inspect") {
-        blit(INSPECT[Math.floor(now / 260) % 2], fred.x - 6, fred.y - 14, false);
+        blit(SPR.up.slice(0, 24), fred.x - 9, fred.y - 24 + (Math.floor(now / 260) % 2), false);
       } else if (!walking && fred.activity === "fight") {
         // Facing the fire with a bucket. He braces on the throw, which is the
         // only frame that reads as effort at 12px wide.
@@ -1061,16 +1051,16 @@
         const seed = target ? target.x * 31 + target.base : 0;
         const p = throwPhase(now, seed);
         const brace = (p >= RELEASE && p < RELEASE + 0.14) ? 1 : 0;
-        blit(SPR.up, fred.x - 6, fred.y - 18 + brace, false);
-        drawBucket(fred.x - 6, fred.y, now, seed);
+        blit(SPR.up, fred.x - 9, fred.y - 27 + brace, false);
+        drawBucket(fred.x - 9, fred.y, now, seed);
         if (target) {
-          drawWater(fred.x - 6, fred.y,
+          drawWater(fred.x - 9, fred.y,
                     target.x + RACK_W / 2, target.base - RACK_H + 2, now, seed);
         }
       } else {
         const key = (fred.dir === "left" || fred.dir === "right") ? "side" : fred.dir;
-        const rows = apart ? SPR[key].slice(0, 14).concat(LEGS_APART[key]) : SPR[key];
-        blit(rows, fred.x - 6, fred.y - 18 + (apart ? -1 : 0), fred.flip);
+        const rows = apart ? SPR[key].slice(0, 21).concat(LEGS_APART[key]) : SPR[key];
+        blit(rows, fred.x - 9, fred.y - 27 + (apart ? -1 : 0), fred.flip);
       }
     }
 
