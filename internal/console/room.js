@@ -71,7 +71,11 @@
     // magenta and RAISES saturation, which is the Stardew move -- the darkest
     // step lands in plum, not brown.
     afro3:"#f99e48", afro2:"#e26124", afroD:"#ad1f23", afro1:"#7f2837",
-    afroO:"#600a37", skinO:"#6b003a", lash:"#12001e",
+    // Outline colour is per material. Using the hair's plum for the whole
+    // silhouette rimmed his skin and clothes in magenta, which is what made him
+    // look shrink-wrapped in red -- the hair can carry it, nothing else can.
+    afroO:"#5c1f14", skinO:"#8a5a44", bodyO:"#241a16", legO:"#12162a",
+    lash:"#12001e",
     scleraP:"#aab2c1", scleraW:"#e2ecff", irisM:"#90cc9e", irisD:"#09351b",
     skin1:"#b57a52", skin2:"#e0a578", skin3:"#f2c9a0", eyeLit:"#fdf3e6",
     // Kindergarten's grammar: the sclera is a warm cream, never white, the
@@ -122,48 +126,48 @@
     down: [
       "......oooooo......","....oAAGAGAGAo....","...oAAAAGAGAGAo...","..oAAAAGAGAGAAAo..",
       "..oAAAAAGAGAAAAo..","..oAnAnAAAAAAAAo..","..oFFFFFFFFFFFFo..","..oASSkkSSkkSSAo..",
-      "..oASSvjSSjvSSAo..","..oASSWISSIWSSAo..","..oArSSSSSSSSrAo..","..oAAxSSSSSSxAAo..",
-      "......xSSSSx......","...oCCCCCCCCCCo...","..ocCCCCCCCCCCco..","..ocLCCCCCCCCLco..",
-      "..ocLCCCCCCCCLco..","..ocLCCCCCCCCLco..","..ocLCCCCCCCCLco..","..osSCCCCCCCCSso..",
-      "..osSCCCCCCCCSso..","...oPPPPPPPPPPo...","...oPPPPPPPPPPo...","...oPPPo..oPPPo...",
-      "...oPPPo..oPPPo...","...obbbo..obbbo...","...obbbo..obbbo...",
+      "..oASSvjSSjvSSAo..","..oASSWISSIWSSAo..","..oArSSSSSSSSrAo..","..oAAxSSmmSSxAAo..",
+      "......xSSSSx......","...OCCCCCCCCCCO...","..OcCCCCCCCCCCcO..","..OcLCCCCCCCCLcO..",
+      "..OcLCCCCCCCCLcO..","..OcLCCCCCCCCLcO..","..OcLCCCCCCCCLcO..","..OsSCCCCCCCCSsO..",
+      "..OsSCCCCCCCCSsO..","...zPPPPPPPPPPz...","...zPPPPPPPPPPz...","...zPPPz..zPPPz...",
+      "...zPPPz..zPPPz...","...zbbbz..zbbbz...","...zbbbz..zbbbz...",
     ],
     up: [
       "......oooooo......","....oAAGAGAGAo....","...oAAAAGAGAGAo...","..oAAAAGAGAGAAAo..",
       "..oAAAAAGAGAAAAo..","..oAnAnAAAAAAAAo..","..oAAnAnAAAAAAAo..","..oAnAnAAAAAAAAo..",
       "..oAAnAnAAAAAAAo..","..oAAAAAAAAAAAAo..","..oFAAAAAAAAAAFo..","..oFFFFFFFFFFFFo..",
-      "......xSSSSx......","...oCCCCCCCCCCo...","..ocCCCCCCCCCCco..","..ocLCCCCCCCCLco..",
-      "..ocLCCCCCCCCLco..","..ocLCCCCCCCCLco..","..ocLCCCCCCCCLco..","..osSCCCCCCCCSso..",
-      "..osSCCCCCCCCSso..","...oPPPPPPPPPPo...","...oPPPPPPPPPPo...","...oPPPo..oPPPo...",
-      "...oPPPo..oPPPo...","...obbbo..obbbo...","...obbbo..obbbo...",
+      "......xSSSSx......","...OCCCCCCCCCCO...","..OcCCCCCCCCCCcO..","..OcLCCCCCCCCLcO..",
+      "..OcLCCCCCCCCLcO..","..OcLCCCCCCCCLcO..","..OcLCCCCCCCCLcO..","..OsSCCCCCCCCSsO..",
+      "..OsSCCCCCCCCSsO..","...zPPPPPPPPPPz...","...zPPPPPPPPPPz...","...zPPPz..zPPPz...",
+      "...zPPPz..zPPPz...","...zbbbz..zbbbz...","...zbbbz..zbbbz...",
     ],
     stretch: [
       "......oooooo......","....oAAGAGAGAo....","...oAAAAGAGAGAo...","..oAAAAGAGAGAAAo..",
       "..oAAAAAGAGAAAAo..","..oAnAnAAAAAAAAo..","..oAAnAnAAAAAAAo..","..oAnAnAAAAAAAAo..",
       "oxoAAAAnAnAAAAAoxo","oSoAAAAAAAAAAAAoSo","oSoFAAAAAAAAAAFoSo","oSoFFFFFFFFFFFFoSo",
-      "oSo...xSSSSx...oSo","ocooCCCCCCCCCCooco","..ocCCCCCCCCCCco..","...oCCCCCCCCCCo...",
-      "...oCCCCCCCCCCo...","...oCCCCCCCCCCo...","...oCCCCCCCCCCo...","...oCCCCCCCCCCo...",
-      "...oCCCCCCCCCCo...","...oPPPPPPPPPPo...","...oPPPPPPPPPPo...","...oPPPo..oPPPo...",
-      "...oPPPo..oPPPo...","...obbbo..obbbo...","...obbbo..obbbo...",
+      "oSo...xSSSSx...oSo","OcOOCCCCCCCCCCOOcO","..OcCCCCCCCCCCcO..","...OCCCCCCCCCCO...",
+      "...OCCCCCCCCCCO...","...OCCCCCCCCCCO...","...OCCCCCCCCCCO...","...OCCCCCCCCCCO...",
+      "...OCCCCCCCCCCO...","...zPPPPPPPPPPz...","...zPPPPPPPPPPz...","...zPPPz..zPPPz...",
+      "...zPPPz..zPPPz...","...zbbbz..zbbbz...","...zbbbz..zbbbz...",
     ],
     // Profile facing right: the afro sits behind, the eye and cheek forward.
     side: [
       ".....oooooo.......","...oAAGAGAGAo.....","..oAAAAGAGAGAo....",".oAAAAGAGAGAAAo...",
       ".oAAAAAGAGAAAAo...",".oAnAnAAAAAAAAo...",".oFFFFFFFFFFFFo...",".oAAAAASSSkkSSo...",
-      ".oAAAAASSSvjSSo...",".oAAAAASSSWISSo...",".oAAAAArSSSSSSo...",".oAAAAxSSSSSSxo...",
-      "......xSSSx.......","...oCCCCCCCCo.....","..ocCCCCCCCCco....","..ocLCCCCCCLco....",
-      "..ocLCCCCCCLco....","..ocLCCCCCCLco....","..ocLCCCCCCLco....","..osSCCCCCCSso....",
-      "..osSCCCCCCSso....","...oPPPPPPPPo.....","...oPPPPPPPPo.....","...oPPo..oPPo.....",
-      "...oPPo..oPPo.....","...obbo..obbo.....","...obbo..obbo.....",
+      ".oAAAAASSSvjSSo...",".oAAAAASSSWISSo...",".oAAAAArSSSSSSo...",".oAAAAxSSSmmSxo...",
+      "......xSSSx.......","...OCCCCCCCCO.....","..OcCCCCCCCCcO....","..OcLCCCCCCLcO....",
+      "..OcLCCCCCCLcO....","..OcLCCCCCCLcO....","..OcLCCCCCCLcO....","..OsSCCCCCCSsO....",
+      "..OsSCCCCCCSsO....","...zPPPPPPPPz.....","...zPPPPPPPPz.....","...zPPz..zPPz.....",
+      "...zPPz..zPPz.....","...zbbz..zbbz.....","...zbbz..zbbz.....",
     ],
     sideStretch: [
       ".....oooooo.......","...oAAGAGAGAo.....","..oAAAAGAGAGAo....",".oAAAAGAGAGAAAo...",
       ".oAAAAAGAGAAAAo...",".oAnAnAAAAAAAAo...",".oFFFFFFFFFFFFo...",".oAAAAASSSkkSSo...",
-      ".oAAAAASSSvjSSo...",".oAAAAASSSWISSo...",".oAAAAArSSSSSSo..o",".oAAAAxSSSSSSxo.ox",
-      "......xSSSx.....oS","...oCCCCCCCCo...oS","..ocCCCCCCCCco..oS","..ocCCCCCCCCco..oc",
-      "..ocCCCCCCCCco....","..ocCCCCCCCCco....","..ocCCCCCCCCco....","..ocCCCCCCCCco....",
-      "..ocCCCCCCCCco....","...oPPPPPPPPo.....","...oPPPPPPPPo.....","...oPPo..oPPo.....",
-      "...oPPo..oPPo.....","...obbo..obbo.....","...obbo..obbo.....",
+      ".oAAAAASSSvjSSo...",".oAAAAASSSWISSo...",".oAAAAArSSSSSSo..o",".oAAAAxSSSmmSxo.ox",
+      "......xSSSx.....oS","...OCCCCCCCCO...OS","..OcCCCCCCCCcO..OS","..OcCCCCCCCCcO..Oc",
+      "..OcCCCCCCCCcO....","..OcCCCCCCCCcO....","..OcCCCCCCCCcO....","..OcCCCCCCCCcO....",
+      "..OcCCCCCCCCcO....","...zPPPPPPPPz.....","...zPPPPPPPPz.....","...zPPz..zPPz.....",
+      "...zPPz..zPPz.....","...zbbz..zbbz.....","...zbbz..zbbz.....",
     ],
   };
 
@@ -188,14 +192,14 @@
     // different columns, so the swap set is per-view; one shared set writes arm
     // pixels into the middle of the profile's torso.
     wide: {
-      rest: ["..ocLCCCCCCCCLco..", "..osSCCCCCCCCSso..", "..osSCCCCCCCCSso.."],
-      a:    ["..osSCCCCCCCCLco..", "..osSCCCCCCCCSso..", "..ocLCCCCCCCCSso.."],
-      b:    ["..ocLCCCCCCCCSso..", "..osSCCCCCCCCSso..", "..osSCCCCCCCCLco.."],
+      rest: ["..OcLCCCCCCCCLcO..", "..OsSCCCCCCCCSsO..", "..OsSCCCCCCCCSsO.."],
+      a:    ["..OsSCCCCCCCCLcO..", "..OsSCCCCCCCCSsO..", "..OcLCCCCCCCCSsO.."],
+      b:    ["..OcLCCCCCCCCSsO..", "..OsSCCCCCCCCSsO..", "..OsSCCCCCCCCLcO.."],
     },
     side: {
-      rest: ["..ocLCCCCCCLco....", "..osSCCCCCCSso....", "..osSCCCCCCSso...."],
-      a:    ["..osSCCCCCCLco....", "..osSCCCCCCSso....", "..ocLCCCCCCSso...."],
-      b:    ["..ocLCCCCCCSso....", "..osSCCCCCCSso....", "..osSCCCCCCLco...."],
+      rest: ["..OcLCCCCCCLcO....", "..OsSCCCCCCSsO....", "..OsSCCCCCCSsO...."],
+      a:    ["..OsSCCCCCCLcO....", "..OsSCCCCCCSsO....", "..OcLCCCCCCSsO...."],
+      b:    ["..OcLCCCCCCSsO....", "..OsSCCCCCCSsO....", "..OsSCCCCCCLcO...."],
     },
   };
   function withHands(rows, which, key) {
@@ -209,12 +213,12 @@
 
   // Rows 21-26, swapped in on alternate strides.
   const LEGS_APART = {
-    down: ["...oPPPPPPPPPPo...","..oPPPo....oPPPo..",".oPPPo......oPPPo.",
-           ".obbbo......obbbo.",".obbbo......obbbo.","..................",],
-    up:   ["...oPPPPPPPPPPo...","..oPPPo....oPPPo..",".oPPPo......oPPPo.",
-           ".obbbo......obbbo.",".obbbo......obbbo.","..................",],
-    side: ["...oPPPPPPPPo.....","..oPPo...oPPo.....",".oPPo.....oPPo....",
-           ".obbo.....obbo....",".obbo.....obbo....","..................",],
+    down: ["...zPPPPPPPPPPz...","..zPPPz....zPPPz..",".zPPPz......zPPPz.",
+           ".zbbbz......zbbbz.",".zbbbz......zbbbz.","..................",],
+    up:   ["...zPPPPPPPPPPz...","..zPPPz....zPPPz..",".zPPPz......zPPPz.",
+           ".zbbbz......zbbbz.",".zbbbz......zbbbz.","..................",],
+    side: ["...zPPPPPPPPz.....","..zPPz...zPPz.....",".zPPz.....zPPz....",
+           ".zbbz.....zbbz....",".zbbz.....zbbz....","..................",],
   };
 
   const SLEEP = [
@@ -231,6 +235,7 @@
     h:C.hair2, H:C.hair1, t:C.hair3,
     A:C.afro2, F:C.afro1, G:C.afro3, n:C.afroD, o:C.afroO,
     k:C.lash, v:C.scleraP, I:C.irisM, j:C.irisD, x:C.skinO,
+    O:C.bodyO, z:C.legO,
     s:C.skin2, S:C.skin3, d:C.skin1, E:C.eyeP, w:C.eyeLit,
     W:C.scleraW, m:C.skin0, r:C.blush,
     C:C.shirt2, L:C.shirt3, c:C.shirt1,
