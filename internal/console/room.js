@@ -1806,6 +1806,18 @@
       "....aBBBBBBBBa","..aaBBBBBBBBa.",".aa.aeeeeeea..","a.....aa..aa..",
       "..............",
     ],
+    // Same curl, ears back and tail shifted. Even asleep a cat twitches.
+    curlB: [
+      "..............","....a.a.......","...aaaaaa.....","..aBB--BBBa...",
+      "..aBBBBBBBBa..","..aeeBBBBBBa..","...aaeeeeeaa..","....aaaaa.....",
+      "..............",
+    ],
+    // Front legs stretched out, back arched. Played on waking.
+    stretch: [
+      "..............","..........a.a.","..a......aaaaa","..aa....aBByBa",
+      ".aaBBBBBBBBBBa","aeeBBBBBBBBBe.","..aaeeeeeeea..","...aa.....aa..",
+      "..............",
+    ],
     // Sat upright, tail curled round the feet.
     sit: [
       ".....a.a......","....aaaaa.....","....ayBya.....","....aBBBa.....",
@@ -2100,7 +2112,11 @@
     // Draw at (x, y - z): only the sprite moves up, the floor position does not.
     const x = Math.round(cat.x) - 7, y = Math.round(cat.y) - 8 - Math.round(cat.z);
     if (cat.state === "nap" && Math.hypot(cat.tx - cat.x, cat.ty - cat.y) < 3) {
-      blit(CAT.curl, x, y, cat.dir < 0);
+      // A twitch every few seconds, and a proper stretch on the way out of it.
+      const left = cat.until - now;
+      const frame = left < 1400 ? CAT.stretch
+                  : (Math.floor(now / 2300) % 4 === 0 ? CAT.curlB : CAT.curl);
+      blit(frame, x, y, cat.dir < 0);
       if (Math.floor(now / 1100) % 2) {
         ctx.fillStyle = C.dim; ctx.font = "5px ui-monospace, monospace";
         ctx.textAlign = "left"; ctx.fillText("z", x + 13, y - 1);
