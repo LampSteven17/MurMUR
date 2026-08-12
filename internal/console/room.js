@@ -142,12 +142,23 @@
   // is no room to animate fingers; moving one hand a row before the other is
   // the entire vocabulary available and it is enough to read as busy.
   const HANDS = {
-    rest: ["..cLCCCCCCCCCCLc..", "..ssCCCCCCCCCCss..", "..ssCCCCCCCCCCss.."],
-    a:    ["..ssCCCCCCCCCCLc..", "..ssCCCCCCCCCCss..", "..cLCCCCCCCCCCss.."],
-    b:    ["..cLCCCCCCCCCCss..", "..ssCCCCCCCCCCss..", "..ssCCCCCCCCCCLc.."],
+    // The front/back sprites and the profile have their arms in different
+    // columns, so the swap set is per-view. Getting this wrong corrupts the
+    // torso rather than moving an arm.
+    wide: {
+      rest: ["..cLCCCCCCCCCCLc..", "..ssCCCCCCCCCCss..", "..ssCCCCCCCCCCss.."],
+      a:    ["..ssCCCCCCCCCCLc..", "..ssCCCCCCCCCCss..", "..cLCCCCCCCCCCss.."],
+      b:    ["..cLCCCCCCCCCCss..", "..ssCCCCCCCCCCss..", "..ssCCCCCCCCCCLc.."],
+    },
+    side: {
+      rest: ["..cLCCCCCCCCLc....", "..ssCCCCCCCCss....", "..ssCCCCCCCCss...."],
+      a:    ["..ssCCCCCCCCLc....", "..ssCCCCCCCCss....", "..cLCCCCCCCCss...."],
+      b:    ["..cLCCCCCCCCss....", "..ssCCCCCCCCss....", "..ssCCCCCCCCLc...."],
+    },
   };
-  function withHands(rows, which) {
-    const h = HANDS[which];
+  function withHands(rows, which, key) {
+    const set = HANDS[key === "side" ? "side" : "wide"];
+    const h = set && set[which];
     if (!h) return rows;
     const out = rows.slice();
     out[18] = h[0]; out[19] = h[1]; out[20] = h[2];
@@ -2368,16 +2379,16 @@
         // shoulder movement, not a wrist one.
         const stir = Math.floor(now / 300) % 2;
         const h = ["a", "b"][Math.floor(now / 300) % 2];
-        blit(withHands(SPR.up, h), fred.x - 9, fred.y - 27 - stir, false);
+        blit(withHands(SPR.up, h, "up"), fred.x - 9, fred.y - 27 - stir, false);
       } else if (!walking && fred.activity === "type") {
         // Hands alternate quickly; the body still breathes underneath.
         const h = ["a", "b"][Math.floor(now / 150) % 2];
-        blit(withHands(SPR.up, h).slice(0, 22), fred.x - 9, fred.y - 22 + breath, false);
+        blit(withHands(SPR.up, h, "up").slice(0, 22), fred.x - 9, fred.y - 22 + breath, false);
       } else if (!walking && fred.activity === "inspect") {
         // Checking a rack: he leans in and out, and one hand comes up to it.
         const lean = Math.floor(now / 260) % 2;
         const h = (Math.floor(now / 520) % 2) ? "a" : "rest";
-        blit(withHands(SPR.up, h).slice(0, 24), fred.x - 9, fred.y - 24 + lean, false);
+        blit(withHands(SPR.up, h, "up").slice(0, 24), fred.x - 9, fred.y - 24 + lean, false);
       } else if (!walking && fred.activity === "fight") {
         // Facing the fire with a bucket. He braces on the throw, which is the
         // only frame that reads as effort at 12px wide.
@@ -2393,7 +2404,11 @@
         }
       } else {
         const key = (fred.dir === "left" || fred.dir === "right") ? "side" : fred.dir;
-        const base = withBlink(SPR[key], key, now);
+        // Arms swing on the same stride parity as the legs, so the swing is
+        // locked to his feet rather than drifting against them.
+        const swing = (Math.floor(fred.dist / 6) & 1) ? "a" : "b";
+        const base = withHands(withBlink(SPR[key], key, now),
+                               moved > 0.05 ? swing : "rest", key);
         const rows = apart ? base.slice(0, 21).concat(LEGS_APART[key]) : base;
         const rise = apart ? -1 : (moved > 0.05 ? 0 : breath);
         blit(rows, fred.x - 9, fred.y - 27 + rise, fred.flip);
