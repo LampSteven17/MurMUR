@@ -368,6 +368,11 @@
     racks = nodes.slice(0, 8).map((node, i) => ({
       node, x: RACK_X[i % 4], base: i < 4 ? ROW_A_Y : ROW_B_Y, guests: [],
     }));
+    // Racks are solid, so the collision world and both nav grids can only be
+    // built once we know where they are.
+    buildSolids();
+    buildGrid("fred", FRED_HW, FRED_FH);
+    buildGrid("cat", CAT_HW, CAT_FH);
   }
 
   function rebuildLeds() {
@@ -1281,35 +1286,11 @@
 
   function inBunk() { return fred.x < BUNK.x + BUNK.w + 4; }
 
+  // Replaced a hand-written aisle router. That one knew about the rack rows and
+  // nothing else, so inside the studio he walked straight through the bed, the
+  // desk and the counter -- there was no geometry for it to avoid.
   function pathTo(tx, ty) {
-    // Route along the aisles instead of straight-lining through hardware.
-    const pts = [];
-    let cx = fred.x, cy = fred.y;
-    if (inBunk()) {
-      if (Math.abs(cy - AISLE_FRONT) > 3) pts.push({x: cx, y: AISLE_FRONT});
-      pts.push({x: DOOR_X, y: AISLE_FRONT});
-      cx = DOOR_X; cy = AISLE_FRONT;
-    } else if (Math.abs(cy - AISLE_FRONT) > 3 && Math.abs(cy - AISLE_MAIN) > 3) {
-      pts.push({x: cx, y: AISLE_FRONT}); cy = AISLE_FRONT;
-    }
-
-    if (tx < BUNK.x + BUNK.w) {                       // heading home to the bunk
-      if (Math.abs(cy - AISLE_FRONT) > 3) { pts.push({x: cx, y: AISLE_FRONT}); cy = AISLE_FRONT; }
-      pts.push({x: DOOR_X, y: AISLE_FRONT});
-      pts.push({x: tx, y: AISLE_FRONT});
-      pts.push({x: tx, y: ty});
-    } else if (ty === AISLE_MAIN) {                   // back row: step up a gap
-      if (Math.abs(cy - AISLE_MAIN) > 3) {
-        const gap = GAPS.reduce((a, g) => Math.abs(g - tx) < Math.abs(a - tx) ? g : a, GAPS[0]);
-        pts.push({x: gap, y: AISLE_FRONT});
-        pts.push({x: gap, y: AISLE_MAIN});
-      }
-      pts.push({x: tx, y: AISLE_MAIN});
-    } else {
-      if (Math.abs(cy - AISLE_FRONT) > 3) pts.push({x: cx, y: AISLE_FRONT});
-      pts.push({x: tx, y: AISLE_FRONT});
-    }
-    return pts;
+    return route(fred.x, fred.y, tx, ty, FRED_HW, FRED_FH, "fred");
   }
 
   function walk(tx, ty, onArrive) {
@@ -1420,6 +1401,304 @@
   }
 
 
+  // --- solid geometry, collision and pathing ---------------------------------
+  // A piece's floor footprint is NOT the rectangle it is drawn in. The drawn
+  // rect covers the whole elevation; the thing you can walk into is the base
+  // quad, which in this projection runs from (x, base-dy) at the back to
+  // (x+w+dx, base) at the front. Its bounding box is the collision rect.
+  //
+  // Everything below works in that floor space. Sprites are tall and their
+  // origin is at their feet, so an entity's footprint is a small rect sitting
+  // just above its origin -- collide the feet, draw the body.
+  function footprintOf(P) {
+    const dy = Math.round(P.d * DEPTH_RISE), dx = Math.round(P.d * DEPTH_SHEAR);
+    const base = P.y + P.h;
+    // zTop is how high you would have to be to clear it. Everything here rests
+    // on the floor, so a single top is enough -- no zBottom needed until
+    // something has to pass underneath.
+    return {x0: P.x, y0: base - dy, x1: P.x + P.w + dx, y1: base, zTop: P.bh};
+  }
+
+  // Where anything on the floor is allowed to be at all.
+  const FLOOR = {x0: 12, y0: 80, x1: 468, y1: 280};
+
+  let SOLIDS = [];
+  // Rack tops are solid to a walker but landable by something airborne, so they
+  // are kept separately as well as in SOLIDS.
+  let PERCHES = [];
+
+  function buildSolids() {
+    SOLIDS = [FRIDGE, KITCHEN, SHELF, BED, TVST, DESK, STOOL, CHAIR, PLANT]
+      .map(footprintOf);
+    PERCHES = [];
+    const rdy = Math.round(RACK_D * DEPTH_RISE), rdx = Math.round(RACK_D * DEPTH_SHEAR);
+    for (const r of racks) {
+      const box = {x0: r.x, y0: r.base - rdy, x1: r.x + RACK_W + rdx, y1: r.base,
+                   zTop: RACK_H + TOP_H};
+      SOLIDS.push(box);
+      // The landable surface is the rack's top face, RACK_H above the floor.
+      PERCHES.push({x0: r.x, y0: r.base - rdy, x1: r.x + RACK_W + rdx, y1: r.base,
+                    z: RACK_H, rack: r});
+    }
+    // The partition, in two pieces so the doorway stays open.
+    const px = BUNK.x + BUNK.w;
+    SOLIDS.push({x0: px, y0: 60, x1: px + 4, y1: DOOR.y0, zTop: 1e9});   // walls
+    SOLIDS.push({x0: px, y0: DOOR.y1, x1: px + 4, y1: 300, zTop: 1e9});  // never cleared
+  }
+
+  function hitsSolid(x0, y0, x1, y1) {
+    for (let i = 0; i < SOLIDS.length; i++) {
+      const s = SOLIDS[i];
+      if (x0 < s.x1 && s.x0 < x1 && y0 < s.y1 && s.y0 < y1) return s;
+    }
+    return null;
+  }
+
+  // Can an entity with this footprint stand with its feet at (x, y)?
+  function canStand(x, y, hw, fh, z) {
+    if (x - hw < FLOOR.x0 || x + hw > FLOOR.x1 || y - fh < FLOOR.y0 || y > FLOOR.y1) return false;
+    for (let i = 0; i < SOLIDS.length; i++) {
+      const s = SOLIDS[i];
+      if (!blocksZ(z || 0, 0, s)) continue;
+      if (footOverlaps(x, y, hw, fh, s)) return false;
+    }
+    return true;
+  }
+
+  // --- movement ---------------------------------------------------------------
+  const EPS = 0.01;
+
+  const footOverlaps = (x, y, hw, fh, s) =>
+    x - hw < s.x1 && x + hw > s.x0 && y - fh < s.y1 && y > s.y0;
+
+  // Does this solid block something at height z with body height zh? Everything
+  // rests on the floor, so only the top matters: clear a rack top and you are
+  // over it. Passing z as 0 gives ordinary floor collision.
+  const blocksZ = (z, zh, s) => z < (s.zTop === undefined ? 1e9 : s.zTop);
+
+  // Axis-separated move with snap-to-contact. Resolving both axes at once and
+  // then pushing out of the overlap sticks on corners and picks the wrong axis
+  // when the two overlaps are close; per-axis resolution has no such ambiguity
+  // because the direction is given by the sign of the movement. It is also what
+  // produces sliding along a wall rather than stopping dead against it.
+  function moveAxis(e, d, hw, fh, axis, z, zh) {
+    if (!d) return;
+    const x0 = e.x, y0 = e.y;
+    if (axis === "x") e.x += d; else e.y += d;
+    let target = axis === "x" ? e.x : e.y, hit = false;
+    for (let i = 0; i < SOLIDS.length; i++) {
+      const s = SOLIDS[i];
+      if (!blocksZ(z, zh, s)) continue;
+      if (!footOverlaps(e.x, e.y, hw, fh, s)) continue;
+      // Already inside it before the move: it must NOT block, or anything that
+      // ends up in geometry is trapped there permanently. This one line is the
+      // difference between a recoverable glitch and a stuck character.
+      if (footOverlaps(x0, y0, hw, fh, s)) continue;
+      hit = true;
+      if (axis === "x") {
+        target = d > 0 ? Math.min(target, s.x0 - hw - EPS)
+                       : Math.max(target, s.x1 + hw + EPS);
+      } else {
+        target = d > 0 ? Math.min(target, s.y0 - EPS)
+                       : Math.max(target, s.y1 + fh + EPS);
+      }
+    }
+    if (hit) { if (axis === "x") e.x = target; else e.y = target; }
+    e.x = Math.max(FLOOR.x0 + hw, Math.min(FLOOR.x1 - hw, e.x));
+    e.y = Math.max(FLOOR.y0 + fh, Math.min(FLOOR.y1, e.y));
+  }
+
+  // Sub-stepped so nothing can tunnel through a thin solid at speed. The step
+  // is half the smaller footprint dimension, which costs nothing when slow.
+  function slideTo(e, nx, ny, hw, fh, z, zh) {
+    const dx = nx - e.x, dy = ny - e.y;
+    const step = Math.max(1, Math.min(hw, fh) * 0.5);
+    const n = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / step));
+    for (let i = 0; i < n; i++) {
+      moveAxis(e, dx / n, hw, fh, "x", z || 0, zh || 0);
+      moveAxis(e, dy / n, hw, fh, "y", z || 0, zh || 0);
+    }
+  }
+
+  // If something ends up inside geometry -- a target chosen badly, a piece
+  // moved under a sleeping cat -- walk outward in rings until a free cell is
+  // found rather than leaving it permanently stuck.
+  function nudgeFree(e, hw, fh) {
+    if (canStand(e.x, e.y, hw, fh)) return true;
+    for (let r = 2; r <= 48; r += 2) {
+      for (let a = 0; a < 12; a++) {
+        const t = (a / 12) * Math.PI * 2;
+        const x = Math.round(e.x + Math.cos(t) * r), y = Math.round(e.y + Math.sin(t) * r);
+        if (canStand(x, y, hw, fh)) { e.x = x; e.y = y; return true; }
+      }
+    }
+    return false;
+  }
+
+  // --- grid A* ---------------------------------------------------------------
+  // The room is small and static, so a uniform grid is the right tool: a navmesh
+  // would be more work to build than the search costs to run. Obstacles are
+  // inflated by the walker's own half-width when the grid is built (the
+  // configuration-space trick), so the search can then treat the walker as a
+  // point and never produce a path that clips a corner.
+  const CELL = 4;
+  const GRID = {};
+
+  function buildGrid(key, hw, fh) {
+    const w = Math.ceil((FLOOR.x1 - FLOOR.x0) / CELL);
+    const h = Math.ceil((FLOOR.y1 - FLOOR.y0) / CELL);
+    const open = new Uint8Array(w * h);
+    for (let gy = 0; gy < h; gy++) {
+      for (let gx = 0; gx < w; gx++) {
+        const x = FLOOR.x0 + gx * CELL + CELL / 2;
+        const y = FLOOR.y0 + gy * CELL + CELL / 2;
+        open[gy * w + gx] = canStand(x, y, hw, fh) ? 1 : 0;
+      }
+    }
+    GRID[key] = {w, h, open, hw, fh};
+    return GRID[key];
+  }
+
+  const toCell = (x, y, g) => ({
+    gx: Math.max(0, Math.min(g.w - 1, Math.floor((x - FLOOR.x0) / CELL))),
+    gy: Math.max(0, Math.min(g.h - 1, Math.floor((y - FLOOR.y0) / CELL))),
+  });
+  const cellPos = (gx, gy) => ({x: FLOOR.x0 + gx * CELL + CELL / 2,
+                                y: FLOOR.y0 + gy * CELL + CELL / 2});
+
+  // Nearest open cell to a blocked one, so a target standing on furniture (a
+  // seat, a counter) still produces a path that gets next to it.
+  function nearestOpen(g, gx, gy) {
+    if (g.open[gy * g.w + gx]) return {gx, gy};
+    for (let r = 1; r < 24; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const nx = gx + dx, ny = gy + dy;
+          if (nx < 0 || ny < 0 || nx >= g.w || ny >= g.h) continue;
+          if (g.open[ny * g.w + nx]) return {gx: nx, gy: ny};
+        }
+      }
+    }
+    return null;
+  }
+
+  const DIRS = [[1,0,10],[-1,0,10],[0,1,10],[0,-1,10],
+                [1,1,14],[1,-1,14],[-1,1,14],[-1,-1,14]];
+
+  function astar(g, s, t) {
+    const n = g.w * g.h;
+    const gScore = new Int32Array(n).fill(0x7fffffff);
+    const came = new Int32Array(n).fill(-1);
+    const closed = new Uint8Array(n);
+    const si = s.gy * g.w + s.gx, ti = t.gy * g.w + t.gx;
+    const hEst = i => {
+      const dx = Math.abs((i % g.w) - t.gx), dy = Math.abs(((i / g.w) | 0) - t.gy);
+      // Octile, with Amit Patel's tie-break nudge (p < min-step-cost / max-path-
+      // length). Without it A* expands a huge plateau of equal-f cells and the
+      // pre-smoothing path wanders.
+      return (10 * (dx + dy) + (14 - 20) * Math.min(dx, dy)) * 1.001;
+    };
+    gScore[si] = 0;
+    // Binary heap, because a linear scan over ~5000 cells per pop is what makes
+    // naive A* feel slow enough to skip frames.
+    const heap = [[hEst(si), si]];
+    const push = it => {
+      heap.push(it); let i = heap.length - 1;
+      while (i > 0) { const p = (i - 1) >> 1;
+        if (heap[p][0] <= heap[i][0]) break;
+        [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; }
+    };
+    const pop = () => {
+      const top = heap[0], last = heap.pop();
+      if (heap.length) { heap[0] = last; let i = 0;
+        for (;;) { const l = i * 2 + 1, r = l + 1; let m = i;
+          if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+          if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+          if (m === i) break;
+          [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } }
+      return top;
+    };
+    let guard = 0;
+    while (heap.length && guard++ < 20000) {
+      const [, cur] = pop();
+      if (cur === ti) break;
+      if (closed[cur]) continue;
+      closed[cur] = 1;
+      const cx = cur % g.w, cy = (cur / g.w) | 0;
+      for (const [dx, dy, cost] of DIRS) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= g.w || ny >= g.h) continue;
+        const ni = ny * g.w + nx;
+        if (!g.open[ni] || closed[ni]) continue;
+        // No cutting corners diagonally: both orthogonal neighbours must be
+        // open, or the walker clips the corner of a desk on the way past.
+        if (dx && dy && (!g.open[cy * g.w + nx] || !g.open[ny * g.w + cx])) continue;
+        const ng = gScore[cur] + cost;
+        if (ng < gScore[ni]) { gScore[ni] = ng; came[ni] = cur; push([ng + hEst(ni), ni]); }
+      }
+    }
+    if (came[ti] < 0 && ti !== si) return null;
+    const out = [];
+    for (let i = ti; i >= 0; i = came[i]) {
+      out.push(cellPos(i % g.w, (i / g.w) | 0));
+      if (i === si) break;
+    }
+    return out.reverse();
+  }
+
+  // Is the straight segment between two points walkable? Sampled at half a cell,
+  // which is the resolution the grid was built at.
+  function clearLine(ax, ay, bx, by, hw, fh) {
+    const d = Math.hypot(bx - ax, by - ay), steps = Math.ceil(d / (CELL / 2));
+    for (let i = 0; i <= steps; i++) {
+      const t = steps ? i / steps : 0;
+      if (!canStand(ax + (bx - ax) * t, ay + (by - ay) * t, hw, fh)) return false;
+    }
+    return true;
+  }
+
+  // String-pulling: keep only the corners the walker actually has to turn at.
+  // Without it the path is a staircase of 4px steps and the walk reads as a
+  // character shuffling along grid lines.
+  function smooth(pts, hw, fh) {
+    if (!pts || pts.length < 3) return pts || [];
+    const out = [pts[0]];
+    let i = 0;
+    while (i < pts.length - 1) {
+      let j = pts.length - 1;
+      while (j > i + 1 && !clearLine(pts[i].x, pts[i].y, pts[j].x, pts[j].y, hw, fh)) j--;
+      out.push(pts[j]);
+      i = j;
+    }
+    return out;
+  }
+
+  // The one entry point: a walkable, smoothed route from a to b, or a direct
+  // line if the search fails so nothing ever freezes waiting for a path.
+  function route(ax, ay, bx, by, hw, fh, key) {
+    const g = GRID[key] || buildGrid(key, hw, fh);
+    const s = nearestOpen(g, toCell(ax, ay, g).gx, toCell(ax, ay, g).gy);
+    const t = nearestOpen(g, toCell(bx, by, g).gx, toCell(bx, by, g).gy);
+    if (!s || !t) return [{x: bx, y: by}];
+    if (clearLine(ax, ay, bx, by, hw, fh)) return [{x: bx, y: by}];
+    const raw = astar(g, s, t);
+    if (!raw) return [{x: bx, y: by}];
+    const pts = smooth(raw, hw, fh);
+    // Snap onto the exact target for the final hop. Interaction points are
+    // deliberately inside solids -- a seat IS the chair -- so a route that
+    // refused to enter geometry would always stop a few px short and every
+    // seated pose would be off its furniture. Bounded so an unreachable target
+    // cannot drag him through a wall: the last hop has to be a short one.
+    const last = pts[pts.length - 1];
+    if (last && Math.hypot(bx - last.x, by - last.y) > 0.5 &&
+        Math.hypot(bx - last.x, by - last.y) < 18) pts.push({x: bx, y: by});
+    return pts;
+  }
+
+  const FRED_HW = 6, FRED_FH = 5;
+  const CAT_HW = 5, CAT_FH = 4;
+
   // --- the cat ---------------------------------------------------------------
   // She has her own little state machine, deliberately separate from Fred's:
   // she is not reacting to cluster events, she is just living here. The one
@@ -1490,6 +1769,8 @@
   function catGo(x, y) {
     cat.tx = Math.max(CAT_BOUNDS.x0, Math.min(CAT_BOUNDS.x1, x));
     cat.ty = Math.max(CAT_BOUNDS.y0, Math.min(CAT_BOUNDS.y1, y));
+    cat.path = route(cat.x, cat.y, cat.tx, cat.ty, CAT_HW, CAT_FH, "cat");
+    cat.pi = 0;
   }
 
   function catEnter(state, now) {
@@ -1515,20 +1796,35 @@
   }
 
   function catStep(dt, now) {
-    const dx = cat.tx - cat.x, dy = cat.ty - cat.y;
-    const d = Math.hypot(dx, dy);
+    nudgeFree(cat, CAT_HW, CAT_FH);
+    const d = Math.hypot(cat.tx - cat.x, cat.ty - cat.y);
     const moving = (cat.state === "prowl" || cat.state === "play" || cat.state === "knock" ||
                     (cat.state === "nap" && d > 2));
     if (moving && d > 1.5) {
+      // Follow the routed waypoints rather than the target directly, and move
+      // with slide so a bad path or a moving ball still cannot push her into
+      // the furniture.
+      if (!cat.path || !cat.path.length) catGo(cat.tx, cat.ty);
+      const wp = cat.path[Math.min(cat.pi, cat.path.length - 1)] || {x: cat.tx, y: cat.ty};
+      const wdx = wp.x - cat.x, wdy = wp.y - cat.y;
+      const wd = Math.hypot(wdx, wdy);
+      if (wd < 2.5 && cat.pi < cat.path.length - 1) cat.pi++;
       const sp = (cat.state === "play" ? CAT_RUN : CAT_SPEED) * dt / 1000;
-      const k = Math.min(1, sp / d);
-      cat.x += dx * k; cat.y += dy * k;
-      cat.dist += Math.abs(dx * k) + Math.abs(dy * k);
-      if (Math.abs(dx) > 0.4) cat.dir = dx > 0 ? 1 : -1;
+      const k = wd > 0.01 ? Math.min(1, sp / wd) : 0;
+      const px = cat.x, py = cat.y;
+      slideTo(cat, cat.x + wdx * k, cat.y + wdy * k, CAT_HW, CAT_FH);
+      cat.dist += Math.abs(cat.x - px) + Math.abs(cat.y - py);
+      if (Math.abs(cat.x - px) > 0.15) cat.dir = cat.x > px ? 1 : -1;
+      // Wedged against something with the waypoint unreachable: give up on this
+      // route and pick another. Without this she grinds into a corner forever.
+      if (Math.abs(cat.x - px) < 0.02 && Math.abs(cat.y - py) < 0.02) {
+        cat.stuck = (cat.stuck || 0) + dt;
+        if (cat.stuck > 700) { cat.stuck = 0; catEnter("prowl", now); }
+      } else cat.stuck = 0;
     }
 
     if (cat.state === "play") {
-      catGo(ball.x, ball.y);                  // she tracks it as it rolls
+      if (!cat.reroute || now > cat.reroute) { catGo(ball.x, ball.y); cat.reroute = now + 400; }
       if (d < 8 && Math.hypot(ball.vx, ball.vy) < 6) {
         const a = Math.random() * Math.PI * 2;   // a swipe, not a kick
         ball.vx = Math.cos(a) * (40 + Math.random() * 50);
@@ -1542,15 +1838,56 @@
     if (now > cat.until) catEnter(catPick(), now);
   }
 
+  const BALL_R = 2, BALL_BOUNCE = 0.55, BALL_REST = 6;
   function ballStep(dt) {
     const f = Math.pow(0.12, dt / 1000);       // exponential drag, frame-rate safe
-    ball.x += ball.vx * dt / 1000;
-    ball.y += ball.vy * dt / 1000;
+    // Sub-step so a hard swipe cannot pass through a desk between two frames.
+    // At 4px radius against a 20px-deep footprint one step is fine at walking
+    // speed and not at all fine at 200px/s.
+    const dist = Math.hypot(ball.vx, ball.vy) * dt / 1000;
+    const n = Math.max(1, Math.ceil(dist / BALL_R));
+    for (let i = 0; i < n; i++) {
+      const sdt = dt / n;
+      let nx = ball.x + ball.vx * sdt / 1000;
+      let ny = ball.y + ball.vy * sdt / 1000;
+
+      // Resolve each axis against whatever it would enter and reflect only that
+      // axis. Per-axis is what picks the correct face without computing a
+      // normal: if the X move alone put it inside, it was a vertical face.
+      const hx = hitsSolid(nx - BALL_R, ball.y - BALL_R, nx + BALL_R, ball.y + BALL_R);
+      if (hx) {
+        // Push back OUT to the face BEFORE flipping. Reflecting while still
+        // overlapping is the classic jitter: it re-collides next frame, flips
+        // again, and buzzes inside the wall forever.
+        nx = ball.vx > 0 ? hx.x0 - BALL_R - EPS : hx.x1 + BALL_R + EPS;
+        // ... and only reflect if actually approaching. Without this guard a
+        // ball already separating gets flipped back inward.
+        if (ball.vx * (hx.x0 - ball.x) > 0) {
+          ball.vx = Math.abs(ball.vx) < BALL_REST ? 0 : -ball.vx * BALL_BOUNCE;
+        }
+      }
+      const hy = hitsSolid(nx - BALL_R, ny - BALL_R, nx + BALL_R, ny + BALL_R);
+      if (hy) {
+        ny = ball.vy > 0 ? hy.y0 - BALL_R - EPS : hy.y1 + BALL_R + EPS;
+        if (ball.vy * (hy.y0 - ball.y) > 0) {
+          ball.vy = Math.abs(ball.vy) < BALL_REST ? 0 : -ball.vy * BALL_BOUNCE;
+        }
+      }
+      ball.x = nx; ball.y = ny;
+
+      if (ball.x < FLOOR.x0) { ball.x = FLOOR.x0; ball.vx = Math.abs(ball.vx) * 0.6; }
+      if (ball.x > FLOOR.x1) { ball.x = FLOOR.x1; ball.vx = -Math.abs(ball.vx) * 0.6; }
+      if (ball.y < FLOOR.y0) { ball.y = FLOOR.y0; ball.vy = Math.abs(ball.vy) * 0.6; }
+      if (ball.y > FLOOR.y1) { ball.y = FLOOR.y1; ball.vy = -Math.abs(ball.vy) * 0.6; }
+    }
     ball.vx *= f; ball.vy *= f;
-    if (ball.x < CAT_BOUNDS.x0) { ball.x = CAT_BOUNDS.x0; ball.vx = -ball.vx * 0.6; }
-    if (ball.x > CAT_BOUNDS.x1) { ball.x = CAT_BOUNDS.x1; ball.vx = -ball.vx * 0.6; }
-    if (ball.y < CAT_BOUNDS.y0) { ball.y = CAT_BOUNDS.y0; ball.vy = -ball.vy * 0.6; }
-    if (ball.y > CAT_BOUNDS.y1) { ball.y = CAT_BOUNDS.y1; ball.vy = -ball.vy * 0.6; }
+    if (Math.abs(ball.vx) < 0.6) ball.vx = 0;
+    if (Math.abs(ball.vy) < 0.6) ball.vy = 0;
+    // Last resort: something moved onto it, or a swipe launched it from an
+    // overlapping spot. Walk it out rather than leave it embedded.
+    if (hitsSolid(ball.x - BALL_R, ball.y - BALL_R, ball.x + BALL_R, ball.y + BALL_R)) {
+      nudgeFree(ball, BALL_R, BALL_R);
+    }
   }
 
   function drawCat(now) {
@@ -2138,6 +2475,24 @@
       burning: burning.size,
     });
     window.__catKnock = () => { catEnter("knock", performance.now ? performance.now() : 0); };
+    // Physics assertions for the harness: is anything currently overlapping a
+    // solid? Nothing should ever be, at any point in a long run.
+    window.__ballSet = (x, y, vx, vy) => { ball.x = x; ball.y = y; ball.vx = vx; ball.vy = vy; };
+    window.__ballState = () => ({x: ball.x, y: ball.y, vx: ball.vx, vy: ball.vy});
+    window.__physics = () => ({
+      // Seated or asleep he is deliberately inside a prop -- a seat IS the
+      // chair -- so overlapping only counts as a fault when he is on his feet.
+      fred: {x: Math.round(fred.x), y: Math.round(fred.y), act: fred.activity,
+             seated: fred.asleep || (!walking && !!OCCUPIES[fred.activity]),
+             bad: !(fred.asleep || (!walking && !!OCCUPIES[fred.activity])) &&
+                  !canStand(fred.x, fred.y, FRED_HW, FRED_FH)},
+      cat:  {x: Math.round(cat.x), y: Math.round(cat.y), z: Math.round(cat.z || 0),
+             st: cat.state, stuck: Math.round(cat.stuck || 0),
+             bad: !(cat.z > 0) && !canStand(cat.x, cat.y, CAT_HW, CAT_FH, cat.z || 0)},
+      ball: {x: Math.round(ball.x), y: Math.round(ball.y),
+             bad: !!hitsSolid(ball.x - 2, ball.y - 2, ball.x + 2, ball.y + 2)},
+      solids: SOLIDS.length,
+    });
   }
   load().then(() => requestAnimationFrame(frame));
   setInterval(load, 60000);
