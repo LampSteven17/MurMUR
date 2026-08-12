@@ -445,7 +445,15 @@
   const TV      = piece(20,  24,  8, 16, TVST.y + TVST.h - TVST.bh - 3);
   // One seat and one screen. The desk PC and the armchair are gone -- he sits on
   // this stool in front of the telly, and the telly is his terminal.
-  const STOOL   = piece(70,  22, 12, 10, 196);   // to the right of the telly
+  // Directly in FRONT of the telly, not beside it. In cabinet oblique the depth
+  // axis is compressed 4:1, so a box rotated to face right shows its screen on
+  // the side face at a quarter width -- a 36-deep telly gives a 9px screen that
+  // is taller than it is wide. There is no rotation that renders a watchable
+  // screen against a side wall; the only orientation this projection can show a
+  // screen in is facing the camera. So the telly stays square to the camera and
+  // he sits in front of it looking away from us, which is the arrangement that
+  // is actually correct rather than the one that merely looked wrong.
+  const STOOL   = piece(21,  22, 12, 10, 230);
   const PLANT   = piece(142, 14, 10, 11, 268);
   const DOOR = {y0:238, y1:280};
   const RACK_W = 28, RACK_H = 48, TOP_H = 9, RACK_D = 16;
@@ -2411,7 +2419,7 @@
       // arrival hands off to a pose that says what he is actually doing.
       if (!walking && fred.activity === "read") {
         blit(withBlink(SPR.side, "side", now).slice(0, 21),
-             fred.x - 9, fred.y - 21 + breath, true);
+             fred.x - 9, fred.y - 21 + breath, false);
         drawBook(fred.x - 9, fred.y + breath, now);
       } else if (!walking && fred.activity === "clean") {
         // Crouched over it, scrubbing. The cloth is the only moving part.
@@ -2435,11 +2443,11 @@
         // it. The stretch has its own profile frame for the same reason -- the
         // back-view one would have snapped him ninety degrees for two seconds.
         if (now % 26000 < 1700) {
-          blit(SPR.sideStretch.slice(0, 21), fred.x - 9, fred.y - 22 + breath, true);
+          blit(SPR.stretch.slice(0, 21), fred.x - 9, fred.y - 22 + breath, false);
         } else {
           const h = ["a", "b"][Math.floor(now / 150) % 2];
-          const rows = withHands(withBlink(SPR.side, "side", now), h, "side");
-          blit(rows.slice(0, 21), fred.x - 9, fred.y - 21 + breath, true);
+          blit(withHands(SPR.up, h, "up").slice(0, 21),
+               fred.x - 9, fred.y - 21 + breath, false);
         }
       } else if (!walking && fred.activity === "inspect") {
         // Checking a rack: he leans in and out, and one hand comes up to it.
