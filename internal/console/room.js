@@ -324,18 +324,20 @@
   // expressed against those.
   // Everything is scaled off Fred. He is 27px tall, which reads as about 1.7m,
   // so heights run at roughly 16px per metre: a fridge is a shade taller than
-  // he is, a counter hits him at the waist, a desk mid-thigh. The old set was
-  // sized by eye and had him dwarfed -- a 52px fridge is 3.3m, a 46px shelf is
-  // nearly 3m. Small objects (the telly) stay deliberately over-scale, because
-  // a truly-to-scale 24" screen is 6px and unreadable.
+  // he is, a counter hits him at the waist, a desk mid-thigh. Small objects
+  // (the telly) stay deliberately over-scale, because a truly-to-scale 24"
+  // screen is 6px and unreadable.
   //
-  // WALL_Y sits 2px INTO the skirting rather than on the floor line. Pieces are
-  // drawn after the wall, so overlapping it is what makes them read as standing
-  // against it; sitting exactly on the boundary left a hairline of floor and a
-  // wedge of it beside each piece, which is what kept looking like a gap.
-  const WALL_Y = WALL_H - 2;
-  const WINDOW = {x:36, y:10, w:96, h:50};
-  const backBase = (h, d) => WALL_Y + h + Math.round(d * DEPTH_RISE);
+  // WALL_Y is the line where the floor meets the back wall, and a piece stands
+  // against that wall when its FLOOR FOOTPRINT touches it -- base - dy -- not
+  // when its top face does. The previous form added the piece's height, which
+  // anchored the top face instead and left the base that many pixels out into
+  // the room: the fridge had its lid in the corner and its body a foot away.
+  // A tall piece now correctly rises UP the wall in view, which is what a tall
+  // thing standing against a wall does.
+  const WALL_Y = WALL_H + 2;
+  const WINDOW = {x:36, y:10, w:96, h:44};
+  const backBase = (h, d) => WALL_Y + Math.round(d * DEPTH_RISE);
   const piece = (x, w, d, h, base) =>
     ({x, w, d, bh: h, y: base - h - Math.round(d * DEPTH_RISE),
       h: h + Math.round(d * DEPTH_RISE)});
@@ -344,8 +346,8 @@
   // coordinates. Anything that sits ON a surface -- a pot, a mug, a seated
   // character -- must be placed through this, because the face is sheared and
   // a screen-space offset from the piece's origin lands on the FRONT face
-  // instead. That single mistake has now produced the floating hobs, the
-  // keyboard hanging off the desk, and a saucepan on the cupboard door.
+  // instead. That mistake produced the floating hobs, the keyboard hanging off
+  // the desk, and a saucepan on a cupboard door.
   const topPoint = (P, u, v) => {
     const dy = Math.round(P.d * DEPTH_RISE), dx = Math.round(P.d * DEPTH_SHEAR);
     const i = Math.max(0, Math.min(dy - 1, Math.round(v * (dy - 1))));
@@ -354,7 +356,6 @@
       y: (P.y + P.h) - P.bh - 1 - i,
     };
   };
-
   const FRIDGE  = piece(10,  20, 14, 30, backBase(30, 14));   // hard into the corner
   const KITCHEN = piece(56,  56, 18, 15, backBase(15, 18));
   const SHELF   = piece(140, 20, 10, 30, backBase(30, 10));   // flush to the side wall
@@ -547,19 +548,9 @@
     b.fillStyle = C.on;  b.fillRect(FRIDGE.x + 8, fT + 4, 2, 1);
     b.fillStyle = C.wood5; b.fillRect(FRIDGE.x + 5, fT + 16, 6, 4);
 
-    // Backsplash: the counter's back edge is at the wall, but the oblique shear
-    // opens a wedge of floor beside it that reads as a gap. A panel up the wall
-    // closes it and is what a real kitchen has anyway.
     const kDy = Math.round(KITCHEN.d * DEPTH_RISE);
     const kDx = Math.round(KITCHEN.d * DEPTH_SHEAR);
     const kBack = (KITCHEN.y + KITCHEN.h) - KITCHEN.bh - kDy;
-    b.fillStyle = C.counter;
-    b.fillRect(KITCHEN.x + kDx, kBack - 11, KITCHEN.w, 12);
-    b.fillStyle = C.counterLit;
-    b.fillRect(KITCHEN.x + kDx, kBack - 11, KITCHEN.w, 1);
-    b.fillStyle = C.chairA;
-    for (let ty = kBack - 10; ty < kBack; ty += 3)
-      b.fillRect(KITCHEN.x + kDx, ty, KITCHEN.w, 1);
 
     const kc = box(KITCHEN, MAT.unit);
     const kT = faceTop(KITCHEN);
@@ -1307,7 +1298,7 @@
   // nothing else, so inside the studio he walked straight through the bed, the
   // desk and the counter -- there was no geometry for it to avoid.
   function pathTo(tx, ty) {
-    return route(fred.x, fred.y, tx, ty, FRED_HW, FRED_FH, "fred");
+    return route(fred.x, fred.y, tx, ty, FRED_HW, FRED_FH, "fred", true);
   }
 
   function walk(tx, ty, onArrive) {
@@ -1445,8 +1436,19 @@
   let PERCHES = [];
 
   function buildSolids() {
-    SOLIDS = [FRIDGE, KITCHEN, SHELF, BED, TVST, DESK, STOOL, CHAIR, PLANT]
-      .map(footprintOf);
+    // occupiable: furniture Fred is legitimately inside the footprint of when
+    // he uses it. Sitting on the stool overlaps the desk edge too, because the
+    // stool tucks under it. Named rather than indexed, so reordering the list
+    // cannot silently retag the wrong piece.
+    const PIECES = [
+      [FRIDGE, false], [KITCHEN, false], [SHELF, false], [BED, true],
+      [TVST, false], [DESK, true], [STOOL, true], [CHAIR, true], [PLANT, false],
+    ];
+    SOLIDS = PIECES.map(([P, occ]) => {
+      const f = footprintOf(P);
+      f.occupiable = occ;
+      return f;
+    });
     PERCHES = [];
     const rdy = Math.round(RACK_D * DEPTH_RISE), rdx = Math.round(RACK_D * DEPTH_SHEAR);
     for (const r of racks) {
@@ -1693,7 +1695,7 @@
 
   // The one entry point: a walkable, smoothed route from a to b, or a direct
   // line if the search fails so nothing ever freezes waiting for a path.
-  function route(ax, ay, bx, by, hw, fh, key) {
+  function route(ax, ay, bx, by, hw, fh, key, snapInto) {
     const g = GRID[key] || buildGrid(key, hw, fh);
     const s = nearestOpen(g, toCell(ax, ay, g).gx, toCell(ax, ay, g).gy);
     const t = nearestOpen(g, toCell(bx, by, g).gx, toCell(bx, by, g).gy);
@@ -1708,8 +1710,22 @@
     // seated pose would be off its furniture. Bounded so an unreachable target
     // cannot drag him through a wall: the last hop has to be a short one.
     const last = pts[pts.length - 1];
-    if (last && Math.hypot(bx - last.x, by - last.y) > 0.5 &&
-        Math.hypot(bx - last.x, by - last.y) < 18) pts.push({x: bx, y: by});
+    if (last) {
+      const near = Math.hypot(bx - last.x, by - last.y);
+      // A target that is itself inside a solid is an interaction point -- a seat
+      // IS the chair -- and always gets the final hop, or every seated pose ends
+      // up beside its furniture. A target on open floor only gets it if the hop
+      // is actually clear, because there the snap has no excuse to cut a corner
+      // and walking is a tween along this path with no collision of its own.
+      // Only Fred snaps into geometry, and only because his seats are inside
+      // the furniture by construction. The cat asked for this too and it let
+      // her settle down for a nap inside the armchair.
+      const isInteraction = snapInto && !canStand(bx, by, hw, fh);
+      if (near > 0.5 && near < 18 &&
+          (isInteraction || clearLine(last.x, last.y, bx, by, hw, fh))) {
+        pts.push({x: bx, y: by});
+      }
+    }
     return pts;
   }
 
@@ -2648,10 +2664,12 @@
     window.__physics = () => ({
       // Seated or asleep he is deliberately inside a prop -- a seat IS the
       // chair -- so overlapping only counts as a fault when he is on his feet.
+      // He is only at fault inside something he can never legitimately be in.
+      // Overlapping the stool, chair or bed is what sitting down and getting up
+      // both look like; overlapping a rack or the counter is a bug.
       fred: {x: Math.round(fred.x), y: Math.round(fred.y), act: fred.activity,
-             seated: fred.asleep || (!walking && !!OCCUPIES[fred.activity]),
-             bad: !(fred.asleep || (!walking && !!OCCUPIES[fred.activity])) &&
-                  !canStand(fred.x, fred.y, FRED_HW, FRED_FH)},
+             bad: SOLIDS.some(s2 => !s2.occupiable &&
+                    footOverlaps(fred.x, fred.y, FRED_HW, FRED_FH, s2))},
       cat:  {x: Math.round(cat.x), y: Math.round(cat.y), z: Math.round(cat.z || 0),
              st: cat.state, stuck: Math.round(cat.stuck || 0),
              onRack: !!(cat.standingOn && cat.standingOn.zTop === RACK_H),
