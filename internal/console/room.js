@@ -131,6 +131,16 @@
       "...CCCCCCCCCCCC...","...CCCCCCCCCCCC...","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
       "...PPPPP..PPPPP...","...bbbb....bbbb...","...bbbb....bbbb...",
     ],
+    // The stretch, in profile, so it matches the pose he is already in.
+    sideStretch: [
+      ".....hhhhhh.......","...hhhhhhhhhh.....","..thhhhhhhhhhH....","..thhhhhhhhhhhH...",
+      "..thhhhhhhhhhhH...","..thSSSSSSSSSS....","..thSSSSSSSSSS....","..thSSSSSssSS.....",
+      "..thSSSSSSSSSS....","..thSSSSSEWSS.....","..thSSSSSWWSS.....","..thrSSSSSSSS.....",
+      "..thSSSSSmmmSSss..","..thSSSSSSSSSSss..","...hSSSSSSSSS.ss..","...CCCCCCCCCC.ss..",
+      "..cCCCCCCCCCCc....","..cLCCCCCCCCLc....","..cLCCCCCCCCLc....","..cLCCCCCCCCLc....",
+      "..cLCCCCCCCCLc....","..cLCCCCCCCCLc....","...PPPPPPPPPP.....","...PPPP..PPPP.....",
+      "...PPPP..PPPP.....","...bbb....bbb.....","...bbb....bbb.....",
+    ],
     // Profile: hair at the back, one eye and the mouth set forward of centre.
     side: [
       ".....hhhhhh.......","...hhhhhhhhhh.....","..thhhhhhhhhhH....","..thhhhhhhhhhhH...",
@@ -410,12 +420,12 @@
   // The bed's long axis runs left-right because that is how Fred lies on it;
   // its top face has to be wide enough for a 30px sprite and deep enough for 14
   // rows of one, which is what sets w and d rather than any real bed's ratio.
-  const BED     = piece(12,  38, 30,  8, 190);
-  const TVST    = piece(100, 36, 16, 10, 190);
-  const TV      = piece(108, 24,  8, 16, TVST.y + TVST.h - TVST.bh - 3);
+  const BED     = piece(12,  48, 30,  8, 264);   // longer, moved to the front
+  const TVST    = piece(12,  36, 16, 10, 190);   // against the left wall
+  const TV      = piece(20,  24,  8, 16, TVST.y + TVST.h - TVST.bh - 3);
   // One seat and one screen. The desk PC and the armchair are gone -- he sits on
   // this stool in front of the telly, and the telly is his terminal.
-  const STOOL   = piece(107, 22, 12, 10, 236);
+  const STOOL   = piece(70,  22, 12, 10, 196);   // to the right of the telly
   const PLANT   = piece(142, 14, 10, 11, 268);
   const DOOR = {y0:238, y1:280};
   const RACK_W = 28, RACK_H = 48, TOP_H = 9, RACK_D = 16;
@@ -1361,7 +1371,7 @@
 
   function goSleep() {
     fred.say = "";
-    walk(BED.x + 21, BED.y + 40, null);
+    walk(BED.x + 24, BED.y + BED.h + 10, null);
     if (tl) tl.call(() => { fred.asleep = true; fred.activity = "sleep"; });
     else { fred.asleep = true; }
   }
@@ -1383,7 +1393,7 @@
   }
 
   const ROUTINE_SPOT = {
-    sleep: () => ({x: BED.x + 21, y: BED.y + 40}),
+    sleep: () => ({x: BED.x + 24, y: BED.y + BED.h + 10}),
     type:  () => ({x: DESK_SEAT.x, y: DESK_SEAT.y}),
     cook:  () => ({x: COOK_SPOT.x, y: COOK_SPOT.y}),
     read:  () => ({x: READ_SPOT.x, y: READ_SPOT.y}),
@@ -2381,7 +2391,7 @@
       // arrival hands off to a pose that says what he is actually doing.
       if (!walking && fred.activity === "read") {
         blit(withBlink(SPR.side, "side", now).slice(0, 22),
-             fred.x - 9, fred.y - 22 + breath, fred.flip);
+             fred.x - 9, fred.y - 22 + breath, true);
         drawBook(fred.x - 9, fred.y + breath, now);
       } else if (!walking && fred.activity === "clean") {
         // Crouched over it, scrubbing. The cloth is the only moving part.
@@ -2400,12 +2410,16 @@
         const h = ["a", "b"][Math.floor(now / 300) % 2];
         blit(withHands(SPR.up, h, "up"), fred.x - 9, fred.y - 27 - stir, false);
       } else if (!walking && fred.activity === "type") {
-        if (now % 26000 < 1700) {          // a stretch, roughly every half minute
-          blit(SPR.stretch.slice(0, 22), fred.x - 9, fred.y - 23 + breath, false);
+        // In profile facing left, because the telly is to his left now. Facing
+        // away from the screen he is supposedly working at read as him ignoring
+        // it. The stretch has its own profile frame for the same reason -- the
+        // back-view one would have snapped him ninety degrees for two seconds.
+        if (now % 26000 < 1700) {
+          blit(SPR.sideStretch.slice(0, 22), fred.x - 9, fred.y - 23 + breath, true);
         } else {
-          // Hands alternate quickly; the body still breathes underneath.
           const h = ["a", "b"][Math.floor(now / 150) % 2];
-          blit(withHands(SPR.up, h, "up").slice(0, 22), fred.x - 9, fred.y - 22 + breath, false);
+          const rows = withHands(withBlink(SPR.side, "side", now), h, "side");
+          blit(rows.slice(0, 22), fred.x - 9, fred.y - 22 + breath, true);
         }
       } else if (!walking && fred.activity === "inspect") {
         // Checking a rack: he leans in and out, and one hand comes up to it.
