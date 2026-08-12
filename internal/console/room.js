@@ -67,14 +67,18 @@
     // Ginger afro, three shades hue-shifting toward red as they darken, plus a
     // silhouette shade darker than any of them. Stardew outlines its characters
     // where Kindergarten deliberately does not.
-    afro1:"#5a2110", afro2:"#b8431f", afro3:"#e0763a", line:"#241812",
-    iris:"#3f6b4a",
+    // Penny's ginger ramp, measured light-to-dark. Darkening rotates hue toward
+    // magenta and RAISES saturation, which is the Stardew move -- the darkest
+    // step lands in plum, not brown.
+    afro3:"#f99e48", afro2:"#e26124", afroD:"#ad1f23", afro1:"#7f2837",
+    afroO:"#600a37", skinO:"#6b003a", lash:"#12001e",
+    scleraP:"#aab2c1", scleraW:"#e2ecff", irisM:"#90cc9e", irisD:"#09351b",
     skin1:"#b57a52", skin2:"#e0a578", skin3:"#f2c9a0", eyeLit:"#fdf3e6",
     // Kindergarten's grammar: the sclera is a warm cream, never white, the
     // pupil is a blue-tinted near-black rather than pure #000, and the mouth is
     // the darkest skin shade -- a ~57% value drop from the light tone, not the
     // 24% mine had, which is why it read as a smudge instead of a mouth.
-    skin0:"#6b4a33", eyeW:"#faf1e0", eyeP:"#2f2722", blush:"#de8098",
+    skin0:"#6b4a33", eyeW:"#faf1e0", eyeP:"#2f2722", blush:"#f799a5",
     shirt1:"#5e3a20", shirt2:"#8a5730", shirt3:"#b0764a",
     pant1:"#232840", pant2:"#343c5c", boot:"#15121f",
     catA:"#3a2214", catB:"#a86534", catC:"#d9995a", catEye:"#9be36a",
@@ -89,99 +93,109 @@
   // Two leg positions per direction. The stride is carried by swapping the legs
   // AND lifting the whole sprite 1px — animating legs alone reads as shuffling.
   const SPR = {
-    // 18x27, moved off the Kindergarten grammar toward Stardew's.
+    // 18x27, drawn against measurements taken off the actual Stardew world
+    // sprites rather than an impression of them.
     //
-    // Head plus hair is 44% of his height now rather than 56% -- Stardew world
-    // sprites run nearer a third, Kindergarten well over half, and this sits
-    // between them so he still reads as the same character. The body got the
-    // rows back, so he has a torso again instead of a head on legs.
+    // Head plus hair is 44% of height (they measure 43-48%; Kindergarten is
+    // 57%). Shoulders are narrower than the head, which is true of every NPC
+    // sheet. Legs are stubby, about a fifth.
     //
-    // What is Stardew and not Kindergarten: a dark silhouette line (Kindergarten
-    // has none at all), a lash line above each eye, and an iris colour distinct
-    // from the pupil. What is kept from before, because it is what stopped him
-    // looking dead: the eye is still mostly sclera with the dark part small, and
-    // both pupils sit on the same side rather than mirrored.
+    // The signature is the OUTLINE, and it is not black: every material is
+    // ringed in its own darkest step, hue-rotated toward plum as it darkens and
+    // rising in saturation. Skin outlines in wine, hair in a dark magenta-red.
+    // Kindergarten has no outline at all -- this is the single biggest visual
+    // difference between the two grammars.
     //
-    // The afro is three shades plus the silhouette, hue-shifting toward red as
-    // it darkens, and it reads as the widest part of him -- which is the point.
+    // The eye is 2 wide and 3 tall: a dark lash row, then an OUTER column of
+    // sclera (pale over white) beside an INNER column of iris (dark over mid).
+    // Two pixels of gap between the eyes. My previous pass had 3-wide eyes with
+    // the iris centred, which is not what any of them do.
+    //
+    // No nose and no mouth. Their world sprites have neither -- at most a couple
+    // of pixels of pinker skin on the cheeks, which is what the blush is.
+    //
+    // The afro is dithered. Hair texture is the one place Stardew dithers on a
+    // character, and it is why my first attempt at curls failed: I used isolated
+    // dark dots, which read as holes, where the real sheets use a checkerboard
+    // between adjacent ramp steps -- light cluster upper-right, dark lower-left,
+    // and a baked dark rim along the bottom of the fringe.
     down: [
-      "....FFFFFFFFFF....","..FFAAAAAAAAAAFF..",".FFAGGGAAAAAAAAFF.",".FAGGGAAAAAAAAAAF.",
-      ".FAASSSSSSSSSSAAF.",".FAASSSSSSSSSSAAF.",".FAAkkkSSSSkkkAAF.",".FAAWIWSSSSWIWAAF.",
-      ".FAAWEWSSSSWEWAAF.",".FAArSSSSSSSSrAAF.",".FAASSSmmmmSSSAAF.","..FASSSSSSSSSSAF..",
-      "......SSSSSS......","...CCCCCCCCCCCC...","..ccCCCCCCCCCCcc..","..cLCCCCCCCCCCLc..",
-      "..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..","..ssCCCCCCCCCCss..",
-      "..ssCCCCCCCCCCss..","...PPPPPPPPPPPP...","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
-      "...PPPPP..PPPPP...","...bbbb....bbbb...","...bbbb....bbbb...",
+      "......oooooo......","....oAAGAGAGAo....","...oAAAAGAGAGAo...","..oAAAAGAGAGAAAo..",
+      "..oAAAAAGAGAAAAo..","..oAnAnAAAAAAAAo..","..oFFFFFFFFFFFFo..","..oASSkkSSkkSSAo..",
+      "..oASSvjSSjvSSAo..","..oASSWISSIWSSAo..","..oArSSSSSSSSrAo..","..oAAxSSSSSSxAAo..",
+      "......xSSSSx......","...oCCCCCCCCCCo...","..ocCCCCCCCCCCco..","..ocLCCCCCCCCLco..",
+      "..ocLCCCCCCCCLco..","..ocLCCCCCCCCLco..","..ocLCCCCCCCCLco..","..osSCCCCCCCCSso..",
+      "..osSCCCCCCCCSso..","...oPPPPPPPPPPo...","...oPPPPPPPPPPo...","...oPPPo..oPPPo...",
+      "...oPPPo..oPPPo...","...obbbo..obbbo...","...obbbo..obbbo...",
     ],
     up: [
-      "....FFFFFFFFFF....","..FFAAAAAAAAAAFF..",".FFAGGGAAAAAAAAFF.",".FAGGGAAAAAAAAAAF.",
-      ".FAGGAAAAAAAAAAAF.",".FAAAAAAAAAAAAAAF.",".FAAAAAAAAAAAAAAF.",".FAAAAAAAAAAAAAAF.",
-      ".FAAAAAAAAAAAAAAF.",".FFAAAAAAAAAAAAFF.",".FFFAAAAAAAAAAFFF.","..FFFFFFFFFFFFFF..",
-      "......SSSSSS......","...CCCCCCCCCCCC...","..ccCCCCCCCCCCcc..","..cLCCCCCCCCCCLc..",
-      "..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..","..ssCCCCCCCCCCss..",
-      "..ssCCCCCCCCCCss..","...PPPPPPPPPPPP...","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
-      "...PPPPP..PPPPP...","...bbbb....bbbb...","...bbbb....bbbb...",
+      "......oooooo......","....oAAGAGAGAo....","...oAAAAGAGAGAo...","..oAAAAGAGAGAAAo..",
+      "..oAAAAAGAGAAAAo..","..oAnAnAAAAAAAAo..","..oAAnAnAAAAAAAo..","..oAnAnAAAAAAAAo..",
+      "..oAAnAnAAAAAAAo..","..oAAAAAAAAAAAAo..","..oFAAAAAAAAAAFo..","..oFFFFFFFFFFFFo..",
+      "......xSSSSx......","...oCCCCCCCCCCo...","..ocCCCCCCCCCCco..","..ocLCCCCCCCCLco..",
+      "..ocLCCCCCCCCLco..","..ocLCCCCCCCCLco..","..ocLCCCCCCCCLco..","..osSCCCCCCCCSso..",
+      "..osSCCCCCCCCSso..","...oPPPPPPPPPPo...","...oPPPPPPPPPPo...","...oPPPo..oPPPo...",
+      "...oPPPo..oPPPo...","...obbbo..obbbo...","...obbbo..obbbo...",
     ],
     stretch: [
-      "....FFFFFFFFFF....","..FFAAAAAAAAAAFF..",".FFAAGGAAAAAAAAFF.",".FAAAGGAAAAAAAAAF.",
-      ".FAAAAAAAAAAAAAAF.",".FAAAAAAAAAAAAAAF.",".FAAAAAAAAAAAAAAF.",".FAAAAAAAAAAAAAAF.",
-      ".FAAAAAAAAAAAAAAF.","sFAAAAAAAAAAAAAAFs","sFAAAAAAAAAAAAAAFs","sSFAAAAAAAAAAAAFSs",
-      "sS....SSSSSS....Ss","cC.CCCCCCCCCCCC.Cc","..cCCCCCCCCCCCCc..","...CCCCCCCCCCCC...",
-      "...CCCCCCCCCCCC...","...CCCCCCCCCCCC...","...CCCCCCCCCCCC...","...CCCCCCCCCCCC...",
-      "...CCCCCCCCCCCC...","...PPPPPPPPPPPP...","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
-      "...PPPPP..PPPPP...","...bbbb....bbbb...","...bbbb....bbbb...",
+      "......oooooo......","....oAAGAGAGAo....","...oAAAAGAGAGAo...","..oAAAAGAGAGAAAo..",
+      "..oAAAAAGAGAAAAo..","..oAnAnAAAAAAAAo..","..oAAnAnAAAAAAAo..","..oAnAnAAAAAAAAo..",
+      "oxoAAAAnAnAAAAAoxo","oSoAAAAAAAAAAAAoSo","oSoFAAAAAAAAAAFoSo","oSoFFFFFFFFFFFFoSo",
+      "oSo...xSSSSx...oSo","ocooCCCCCCCCCCooco","..ocCCCCCCCCCCco..","...oCCCCCCCCCCo...",
+      "...oCCCCCCCCCCo...","...oCCCCCCCCCCo...","...oCCCCCCCCCCo...","...oCCCCCCCCCCo...",
+      "...oCCCCCCCCCCo...","...oPPPPPPPPPPo...","...oPPPPPPPPPPo...","...oPPPo..oPPPo...",
+      "...oPPPo..oPPPo...","...obbbo..obbbo...","...obbbo..obbbo...",
     ],
-    // Profile facing right: the afro sits behind the head, the eye and mouth
-    // forward of centre.
+    // Profile facing right: the afro sits behind, the eye and cheek forward.
     side: [
-      "...FFFFFFFF.......",".FFAAAAAAAAF......",".FAGGGAAAAAAAF....",".FAGGAAAAAAAAF....",
-      ".FAAAAASSSSSSSF...",".FAAAAASSSSSSSF...",".FAAAAASSSkkkSF...",".FAAAAASSSWIWSF...",
-      ".FAAAAASSSWEWSF...",".FAAAArSSSSSSSF...",".FAAAAASSSmmSSF...","..FAAAASSSSSSF....",
-      "......SSSSS.......","...CCCCCCCCCC.....","..cCCCCCCCCCCc....","..cLCCCCCCCCLc....",
-      "..cLCCCCCCCCLc....","..cLCCCCCCCCLc....","..cLCCCCCCCCLc....","..ssCCCCCCCCss....",
-      "..ssCCCCCCCCss....","...PPPPPPPPPP.....","...PPPP..PPPP.....","...PPPP..PPPP.....",
-      "...bbb....bbb.....","...bbb....bbb.....","..................",
+      ".....oooooo.......","...oAAGAGAGAo.....","..oAAAAGAGAGAo....",".oAAAAGAGAGAAAo...",
+      ".oAAAAAGAGAAAAo...",".oAnAnAAAAAAAAo...",".oFFFFFFFFFFFFo...",".oAAAAASSSkkSSo...",
+      ".oAAAAASSSvjSSo...",".oAAAAASSSWISSo...",".oAAAAArSSSSSSo...",".oAAAAxSSSSSSxo...",
+      "......xSSSx.......","...oCCCCCCCCo.....","..ocCCCCCCCCco....","..ocLCCCCCCLco....",
+      "..ocLCCCCCCLco....","..ocLCCCCCCLco....","..ocLCCCCCCLco....","..osSCCCCCCSso....",
+      "..osSCCCCCCSso....","...oPPPPPPPPo.....","...oPPPPPPPPo.....","...oPPo..oPPo.....",
+      "...oPPo..oPPo.....","...obbo..obbo.....","...obbo..obbo.....",
     ],
     sideStretch: [
-      "...FFFFFFFF.......",".FFAAAAAAAAF......",".FAGGGAAAAAAAF....",".FAGGAAAAAAAAF....",
-      ".FAAAAASSSSSSSF...",".FAAAAASSSSSSSF...",".FAAAAASSSkkkSF...",".FAAAAASSSWIWSF...",
-      ".FAAAAASSSWEWSF...",".FAAAArSSSSSSSF...",".FAAAAASSSmmSSF...","..FAAAASSSSSSF.ss.",
-      "......SSSSS....ss.","...CCCCCCCCCC..ss.","..cCCCCCCCCCCc.ss.","..cCCCCCCCCCCc....",
-      "..cCCCCCCCCCCc....","..cCCCCCCCCCCc....","..cCCCCCCCCCCc....","..cCCCCCCCCCCc....",
-      "..cCCCCCCCCCCc....","...PPPPPPPPPP.....","...PPPP..PPPP.....","...PPPP..PPPP.....",
-      "...bbb....bbb.....","...bbb....bbb.....","..................",
+      ".....oooooo.......","...oAAGAGAGAo.....","..oAAAAGAGAGAo....",".oAAAAGAGAGAAAo...",
+      ".oAAAAAGAGAAAAo...",".oAnAnAAAAAAAAo...",".oFFFFFFFFFFFFo...",".oAAAAASSSkkSSo...",
+      ".oAAAAASSSvjSSo...",".oAAAAASSSWISSo...",".oAAAAArSSSSSSo..o",".oAAAAxSSSSSSxo.ox",
+      "......xSSSx.....oS","...oCCCCCCCCo...oS","..ocCCCCCCCCco..oS","..ocCCCCCCCCco..oc",
+      "..ocCCCCCCCCco....","..ocCCCCCCCCco....","..ocCCCCCCCCco....","..ocCCCCCCCCco....",
+      "..ocCCCCCCCCco....","...oPPPPPPPPo.....","...oPPPPPPPPo.....","...oPPo..oPPo.....",
+      "...oPPo..oPPo.....","...obbo..obbo.....","...obbo..obbo.....",
     ],
   };
 
-  // Eye rows only, swapped in for a blink. The lid is the dark skin tone, not
-  // ink -- a black line across the eyes is a hole in the face. The lash line on
-  // row 6 stays put, which is what keeps the eye readable while it is shut.
+  // Eye rows only, swapped in for a blink -- rows 8 and 9, the two eye rows.
+  // The lash line on row 7 stays put, which is what keeps the eye readable while
+  // it is shut; the lid itself is dark skin, never ink.
   const BLINK_ROWS = {
-    down: [".FAASSSSSSSSSSAAF.", ".FAAmmmSSSSmmmAAF."],
-    side: [".FAAAAASSSSSSSF...", ".FAAAAASSSmmSSF..."],
+    down: ["..oASSSSSSSSSSAo..", "..oASSddSSddSSAo.."],
+    side: [".oAAAAASSSSSSSo...", ".oAAAAASSSddSSo..."],
   };
   const blinking = now => (now + 900) % 4300 < 130;
   function withBlink(rows, key, now) {
     const b = BLINK_ROWS[key];
     if (!b || !blinking(now)) return rows;
     const out = rows.slice();
-    out[7] = b[0]; out[8] = b[1];
+    out[8] = b[0]; out[9] = b[1];
     return out;
   }
 
   const HANDS = {
-    // The front/back sprites and the profile have their arms in different
-    // columns, so the swap set is per-view. Getting this wrong corrupts the
-    // torso rather than moving an arm.
+    // Rows 18-20. The front/back sprites and the profile carry their arms in
+    // different columns, so the swap set is per-view; one shared set writes arm
+    // pixels into the middle of the profile's torso.
     wide: {
-      rest: ["..cLCCCCCCCCCCLc..", "..ssCCCCCCCCCCss..", "..ssCCCCCCCCCCss.."],
-      a:    ["..ssCCCCCCCCCCLc..", "..ssCCCCCCCCCCss..", "..cLCCCCCCCCCCss.."],
-      b:    ["..cLCCCCCCCCCCss..", "..ssCCCCCCCCCCss..", "..ssCCCCCCCCCCLc.."],
-    },   // rows 18-20
+      rest: ["..ocLCCCCCCCCLco..", "..osSCCCCCCCCSso..", "..osSCCCCCCCCSso.."],
+      a:    ["..osSCCCCCCCCLco..", "..osSCCCCCCCCSso..", "..ocLCCCCCCCCSso.."],
+      b:    ["..ocLCCCCCCCCSso..", "..osSCCCCCCCCSso..", "..osSCCCCCCCCLco.."],
+    },
     side: {
-      rest: ["..cLCCCCCCCCLc....", "..ssCCCCCCCCss....", "..ssCCCCCCCCss...."],
-      a:    ["..ssCCCCCCCCLc....", "..ssCCCCCCCCss....", "..cLCCCCCCCCss...."],
-      b:    ["..cLCCCCCCCCss....", "..ssCCCCCCCCss....", "..ssCCCCCCCCLc...."],
+      rest: ["..ocLCCCCCCLco....", "..osSCCCCCCSso....", "..osSCCCCCCSso...."],
+      a:    ["..osSCCCCCCLco....", "..osSCCCCCCSso....", "..ocLCCCCCCSso...."],
+      b:    ["..ocLCCCCCCSso....", "..osSCCCCCCSso....", "..osSCCCCCCLco...."],
     },
   };
   function withHands(rows, which, key) {
@@ -195,19 +209,19 @@
 
   // Rows 21-26, swapped in on alternate strides.
   const LEGS_APART = {
-    down: ["...PPPPPPPPPPPP...","..PPPPP.....PPPP..",".PPPP.........PPP.",
-           ".bbbb.........bbb.",".bbbb.........bbb.","..................",],
-    up:   ["...PPPPPPPPPPPP...","..PPPPP.....PPPP..",".PPPP.........PPP.",
-           ".bbbb.........bbb.",".bbbb.........bbb.","..................",],
-    side: ["...PPPPPPPPPP.....","..PPPPP..PPPP.....",".PPPP.....PPP.....",
-           ".bbbb.....bbb.....",".bbbb.....bbb.....","..................",],
+    down: ["...oPPPPPPPPPPo...","..oPPPo....oPPPo..",".oPPPo......oPPPo.",
+           ".obbbo......obbbo.",".obbbo......obbbo.","..................",],
+    up:   ["...oPPPPPPPPPPo...","..oPPPo....oPPPo..",".oPPPo......oPPPo.",
+           ".obbbo......obbbo.",".obbbo......obbbo.","..................",],
+    side: ["...oPPPPPPPPo.....","..oPPo...oPPo.....",".oPPo.....oPPo....",
+           ".obbo.....obbo....",".obbo.....obbo....","..................",],
   };
 
   const SLEEP = [
-    "........hhhhhh................","......hhhhhhhhhh..............",
-    ".....thhSSSSSShH..............",".....thSSSSSSSSH..............",
-    ".....thSmmSSmmSH..............",".....thSSSSSSSSH..............",
-    "......hSSSSSSH................","......QQQQQQQQQQQQQQQQQQQQ....",
+    "........AAAAAA................","......AAAAAAAAAA..............",
+    ".....GAASSSSSSAo..............",".....GASSSSSSSSo..............",
+    ".....GASmmSSmmSo..............",".....GASSSSSSSSo..............",
+    "......ASSSSSSo................","......QQQQQQQQQQQQQQQQQQQQ....",
     ".....QQQQQQQQQQQQQQQQQQQQQQ...",".....QQQQQQQQQQQQQQQQQQQQQQ...",
     ".....qQQQQQQQQQQQQQQQQQQQQq...",".....qqQQQQQQQQQQQQQQQQQQqq...",
     "......qqqqqqqqqqqqqqqqqqqq....","..............................",
@@ -215,9 +229,10 @@
 
   const PX = {
     h:C.hair2, H:C.hair1, t:C.hair3,
-    A:C.afro2, F:C.afro1, G:C.afro3, k:C.line, I:C.iris,
+    A:C.afro2, F:C.afro1, G:C.afro3, n:C.afroD, o:C.afroO,
+    k:C.lash, v:C.scleraP, I:C.irisM, j:C.irisD, x:C.skinO,
     s:C.skin2, S:C.skin3, d:C.skin1, E:C.eyeP, w:C.eyeLit,
-    W:C.eyeW, m:C.skin0, r:C.blush,
+    W:C.scleraW, m:C.skin0, r:C.blush,
     C:C.shirt2, L:C.shirt3, c:C.shirt1,
     P:C.pant2, p:C.pant1, b:C.boot,
     Q:C.quilt, q:C.cloth1, "-":C.ink,
