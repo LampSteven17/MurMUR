@@ -120,6 +120,23 @@
     ],
   };
 
+  // Eye rows only, swapped in for a blink. Nothing sells a face as alive like
+  // the eyes closing occasionally -- a character that never blinks reads as a
+  // mannequin no matter how good the rest of the sprite is.
+  const BLINK_ROWS = {
+    down: ["..thSSSSSSSSSShH..", "..thSSddSSddSShH.."],
+    side: ["..thSSSSSSSSSS....", "..thSSSSSddSSS...."],
+  };
+  // Deterministic, and offset so it never lines up with anything else moving.
+  const blinking = now => (now + 900) % 4300 < 130;
+  function withBlink(rows, key, now) {
+    const b = BLINK_ROWS[key];
+    if (!b || !blinking(now)) return rows;
+    const out = rows.slice();
+    out[7] = b[0]; out[8] = b[1];
+    return out;
+  }
+
   // Rows 21-26, swapped in on alternate strides.
   const LEGS_APART = {
     down: ["...PPPPPPPPPPPP...","..PPPPP.....PPPP..",".PPPP.........PPP.",
@@ -1738,6 +1755,18 @@
       "...aBBBBBa....","...aBBBBBa....","...aBBBBBaa...","...aeeeeeaa...",
       "....aaaaa.....",
     ],
+    // Same, tail flicked out. A sitting cat is never entirely still.
+    sitB: [
+      ".....a.a......","....aaaaa.....","....ayBya.....","....aBBBa.....",
+      "...aBBBBBa..a.","...aBBBBBa.a..","...aBBBBBaa...","...aeeeeea....",
+      "....aaaaa.....",
+    ],
+    // Washing: head down to the shoulder, one back leg up.
+    groom: [
+      ".....a.a......","....aaaaa.....","....aBBBa.....","...aBByBa.....",
+      "..aBBBBBBa....","..aBBBBBBaa...","..aBBBBBBa.a..","..aeeeeeea....",
+      "...aaaaa......",
+    ],
   };
 
   const CAT_SPEED = 22;                      // px/sec, unhurried
@@ -1811,7 +1840,8 @@
     if (r < 0.24) return "play";
     if (r < 0.40) return "nap";
     if (r < 0.50) return "knock";
-    if (r < 0.62) return "sit";
+    if (r < 0.56) return "sit";
+    if (r < 0.62) return "groom";
     if (r < 0.80 && PERCHES.length) return "leap";
     return "prowl";
   }
@@ -1835,7 +1865,7 @@
     } else if (state === "nap") {
       catGo(BED.x + 30 + Math.random() * 90, 250 + Math.random() * 20);
       cat.until = now + 20000 + Math.random() * 25000;
-    } else if (state === "sit") {
+    } else if (state === "sit" || state === "groom") {
       cat.until = now + 5000 + Math.random() * 7000;
     } else if (state === "leap") {
       // Pick a rack and walk to the floor directly in front of it; the jump
@@ -2020,7 +2050,16 @@
       }
       return;
     }
-    if (cat.state === "sit" || cat.state === "perch") { blit(CAT.sit, x, y, cat.dir < 0); return; }
+    if (cat.state === "groom") {
+      blit(Math.floor(now / 320) % 2 ? CAT.groom : CAT.sit, x, y, cat.dir < 0);
+      return;
+    }
+    if (cat.state === "sit" || cat.state === "perch") {
+      // Tail flicks on a slow, irregular beat rather than a metronome.
+      const flick = (Math.floor(now / 700) % 5) === 0;
+      blit(flick ? CAT.sitB : CAT.sit, x, y, cat.dir < 0);
+      return;
+    }
     if (!cat.grounded) { blit(CAT.leap, x, y, cat.dir < 0); return; }
     // Distance-driven, same as Fred: time-driven legs slide when speed changes.
     const f = (Math.floor(cat.dist / 5) & 1) ? CAT.walkB : CAT.walkA;
@@ -2278,12 +2317,13 @@
       // Standing still is the least informative thing he can do, so every
       // arrival hands off to a pose that says what he is actually doing.
       if (!walking && fred.activity === "read") {
-        blit(SPR.side.slice(0, 22), fred.x - 9, fred.y - 22 + breath, fred.flip);
+        blit(withBlink(SPR.side, "side", now).slice(0, 22),
+             fred.x - 9, fred.y - 22 + breath, fred.flip);
         drawBook(fred.x - 9, fred.y + breath, now);
       } else if (!walking && fred.activity === "clean") {
         // Crouched over it, scrubbing. The cloth is the only moving part.
         const sweep = Math.floor(now / 220) % 2;
-        blit(SPR.side.slice(0, 21), fred.x - 9, fred.y - 19, fred.flip);
+        blit(withBlink(SPR.side, "side", now).slice(0, 21), fred.x - 9, fred.y - 19, fred.flip);
         if (mess) {                       // the cloth works the spill, not his lap
           ctx.fillStyle = C.cloth4;
           ctx.fillRect(mess.x - 4 + sweep * 3, mess.y - 2, 6, 2);
@@ -2312,7 +2352,8 @@
         }
       } else {
         const key = (fred.dir === "left" || fred.dir === "right") ? "side" : fred.dir;
-        const rows = apart ? SPR[key].slice(0, 21).concat(LEGS_APART[key]) : SPR[key];
+        const base = withBlink(SPR[key], key, now);
+        const rows = apart ? base.slice(0, 21).concat(LEGS_APART[key]) : base;
         const rise = apart ? -1 : (moved > 0.05 ? 0 : breath);
         blit(rows, fred.x - 9, fred.y - 27 + rise, fred.flip);
       }
