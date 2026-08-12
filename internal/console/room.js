@@ -65,6 +65,11 @@
     // Fred: warm against a cool room, with enough steps to shade at 18px wide
     hair1:"#2b1c12", hair2:"#4a3526", hair3:"#6b4d36",
     skin1:"#b57a52", skin2:"#e0a578", skin3:"#f2c9a0", eyeLit:"#fdf3e6",
+    // Kindergarten's grammar: the sclera is a warm cream, never white, the
+    // pupil is a blue-tinted near-black rather than pure #000, and the mouth is
+    // the darkest skin shade -- a ~57% value drop from the light tone, not the
+    // 24% mine had, which is why it read as a smudge instead of a mouth.
+    skin0:"#6b4a33", eyeW:"#faf1e0", eyeP:"#2f2722", blush:"#de8098",
     shirt1:"#5e3a20", shirt2:"#8a5730", shirt3:"#b0764a",
     pant1:"#232840", pant2:"#343c5c", boot:"#15121f",
     catA:"#3a2214", catB:"#a86534", catC:"#d9995a", catEye:"#9be36a",
@@ -79,81 +84,80 @@
   // Two leg positions per direction. The stride is carried by swapping the legs
   // AND lifting the whole sprite 1px — animating legs alone reads as shuffling.
   const SPR = {
-    // 18x27, face on a single centre line between columns 8 and 9.
+    // 18x27, rebuilt on the grammar the Kindergarten sprites actually use.
     //
-    // The eyes carry the whole read at this size. Flat 2x2 blocks of ink are
-    // what made him look dead -- they are pupils with no eye around them, so
-    // they read as sockets. Each eye now has a catchlight on its outer top
-    // corner, which is the smallest possible thing that says "wet surface" and
-    // is the difference between a face and a skull.
+    // The eyes were the whole problem. There are only two designs that work at
+    // this size: a single dark dot with no white at all, or a 2x2 block that is
+    // mostly WHITE with one dark pupil pixel in it. The failure mode is exactly
+    // the middle -- a 2x2 that is mostly dark -- and that is what he had, three
+    // parts ink to one part highlight. A dark pixel only reads as a pupil once a
+    // brighter pixel establishes a surface for it to sit on; without that it is
+    // just a hole, and 8px of hole on a 90px face is a skull.
     //
-    // He also has a neck now (the head sat straight on the shoulders), arms in
-    // a darker shirt tone so they separate from the torso, and hands.
+    // Other rules taken from measuring those sprites: features crammed into the
+    // bottom 40% of the head with a big blank forehead; a wide flat mouth close
+    // under the eyes as a counterweight so the eyes are not the only marks; the
+    // brow is a MID-SKIN ridge, not a hair-coloured bar; no nose at all; no
+    // black outline anywhere -- the rim is a dark shade of the skin's own hue.
+    //
+    // And nothing is mirrored. Both pupils sit top-left, so he is looking
+    // slightly left rather than staring dead ahead. That asymmetry is the single
+    // cheapest thing separating "character" from "mannequin".
     down: [
       "......hhhhhh......","....hhhhhhhhhh....","...thhhhhhhhhhH...","..thhhhhhhhhhhhH..",
-      "..thhSSSSSSSShhH..","..thSSSSSSSSSShH..","..thSSSSSSSSSShH..","..thSSwESSEwSShH..",
-      "..thSSEESSEESShH..","..thSSSSSSSSSShH..","..thSSSSddSSSShH..","...hSSSSSSSSSSh...",
-      "......SSSSSS......","...CCCCCCCCCCCC...","..ccCCCCCCCCCCcc..","..cLCCCCCCCCCCLc..",
-      "..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..","..ssCCCCCCCCCCss..",
-      "..ssCCCCCCCCCCss..","...PPPPPPPPPPPP...","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
+      "..thhhhhhhhhhhhH..","..thSSSSSSSSSShH..","..thSSSSSSSSSShH..","..thSssSSSSssShH..",
+      "..thSSSSSSSSSShH..","..thSEWSSSSEWShH..","..thSWWSSSSWWShH..","..thrSSSSSSSSrhH..",
+      "..thSSSmmmmSSShH..","..thSSSSSSSSSShH..","...hSSSSSSSSSSh...","...CCCCCCCCCCCC...",
+      "..ccCCCCCCCCCCcc..","..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..",
+      "..ssCCCCCCCCCCss..","..ssCCCCCCCCCCss..","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
       "...PPPPP..PPPPP...","...bbbb....bbbb...","...bbbb....bbbb...",
     ],
     up: [
       "......hhhhhh......","....hhhhhhhhhh....","...thhhhhhhhhhH...","..thhhhhhhhhhhhH..",
       "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..",
-      "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","...hhhhhhhhhhhh...",
-      "......SSSSSS......","...CCCCCCCCCCCC...","..ccCCCCCCCCCCcc..","..cLCCCCCCCCCCLc..",
-      "..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..","..ssCCCCCCCCCCss..",
-      "..ssCCCCCCCCCCss..","...PPPPPPPPPPPP...","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
+      "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..",
+      "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","...hhhhhhhhhhhh...","...CCCCCCCCCCCC...",
+      "..ccCCCCCCCCCCcc..","..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..",
+      "..ssCCCCCCCCCCss..","..ssCCCCCCCCCCss..","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
       "...PPPPP..PPPPP...","...bbbb....bbbb...","...bbbb....bbbb...",
     ],
-    // Arms up over the head. He holds this for a moment every half-minute or so
-    // at the desk -- a character who does the identical thing for the entire
-    // hour he is sat there stops reading as a person and starts reading as a
-    // looping asset.
+    // Arms up over the head, held for a moment every half minute at the desk.
     stretch: [
       "......hhhhhh......","....hhhhhhhhhh....","...thhhhhhhhhhH...","..thhhhhhhhhhhhH..",
       "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..",
-      "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..",".sshhhhhhhhhhhhss.",".ss.hhhhhhhhh.ss..",
-      ".ss...SSSSSS..ss..",".ccCCCCCCCCCCCCcc.","..cCCCCCCCCCCCCc..","...CCCCCCCCCCCC...",
-      "...CCCCCCCCCCCC...","...CCCCCCCCCCCC...","...CCCCCCCCCCCC...","...CCCCCCCCCCCC...",
-      "...CCCCCCCCCCCC...","...PPPPPPPPPPPP...","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
+      "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..",
+      ".sshhhhhhhhhhhhss.",".sshhhhhhhhhhhhss.",".ss.hhhhhhhhhh.ss.",".ccCCCCCCCCCCCCcc.",
+      "..cCCCCCCCCCCCCc..","...CCCCCCCCCCCC...","...CCCCCCCCCCCC...","...CCCCCCCCCCCC...",
+      "...CCCCCCCCCCCC...","...CCCCCCCCCCCC...","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
       "...PPPPP..PPPPP...","...bbbb....bbbb...","...bbbb....bbbb...",
     ],
-    // Profile: hair at the back, one eye set forward of centre, far arm hidden.
-    // Drawn facing right; left is the mirror.
+    // Profile: hair at the back, one eye and the mouth set forward of centre.
     side: [
       ".....hhhhhh.......","...hhhhhhhhhh.....","..thhhhhhhhhhH....","..thhhhhhhhhhhH...",
-      "..thhSSSSSSSSh....","..thSSSSSSSSSS....","..thSSSSSSSSSS....","..thSSSSSwESSS....",
-      "..thSSSSSEESSS....","..thSSSSSSSSSS....","..thSSSSSSSddS....","...hSSSSSSSSS.....",
-      ".....SSSSS........","...CCCCCCCCCC.....","..cCCCCCCCCCCc....","..cLCCCCCCCCLc....",
-      "..cLCCCCCCCCLc....","..cLCCCCCCCCLc....","..cLCCCCCCCCLc....","..ssCCCCCCCCss....",
-      "..ssCCCCCCCCss....","...PPPPPPPPPP.....","...PPPPPPPPPP.....","...PPPP..PPPP.....",
+      "..thhhhhhhhhhhH...","..thSSSSSSSSSS....","..thSSSSSSSSSS....","..thSSSSSssSS.....",
+      "..thSSSSSSSSSS....","..thSSSSSEWSS.....","..thSSSSSWWSS.....","..thrSSSSSSSS.....",
+      "..thSSSSSmmmSS....","..thSSSSSSSSSS....","...hSSSSSSSSS.....","...CCCCCCCCCC.....",
+      "..cCCCCCCCCCCc....","..cLCCCCCCCCLc....","..cLCCCCCCCCLc....","..cLCCCCCCCCLc....",
+      "..ssCCCCCCCCss....","..ssCCCCCCCCss....","...PPPPPPPPPP.....","...PPPP..PPPP.....",
       "...PPPP..PPPP.....","...bbb....bbb.....","...bbb....bbb.....",
     ],
   };
 
-  // Eye rows only, swapped in for a blink. Nothing sells a face as alive like
-  // the eyes closing occasionally -- a character that never blinks reads as a
-  // mannequin no matter how good the rest of the sprite is.
+  // Eye rows only, swapped in for a blink. The closed lid is the dark skin
+  // tone, not ink -- a black line across the eyes is another hole in the face.
   const BLINK_ROWS = {
-    down: ["..thSSSSSSSSSShH..", "..thSSddSSddSShH.."],
-    side: ["..thSSSSSSSSSS....", "..thSSSSSddSSS...."],
+    down: ["..thSSSSSSSSSShH..", "..thSmmSSSSmmShH.."],
+    side: ["..thSSSSSSSSSS....", "..thSSSSSmmSS....."],
   };
-  // Deterministic, and offset so it never lines up with anything else moving.
   const blinking = now => (now + 900) % 4300 < 130;
   function withBlink(rows, key, now) {
     const b = BLINK_ROWS[key];
     if (!b || !blinking(now)) return rows;
     const out = rows.slice();
-    out[7] = b[0]; out[8] = b[1];
+    out[9] = b[0]; out[10] = b[1];
     return out;
   }
 
-  // Rows 18-20 -- the forearms and hands. Swapped to stagger them, so working
-  // hands alternate instead of the whole body just bobbing. At 18px wide there
-  // is no room to animate fingers; moving one hand a row before the other is
-  // the entire vocabulary available and it is enough to read as busy.
   const HANDS = {
     // The front/back sprites and the profile have their arms in different
     // columns, so the swap set is per-view. Getting this wrong corrupts the
@@ -162,7 +166,7 @@
       rest: ["..cLCCCCCCCCCCLc..", "..ssCCCCCCCCCCss..", "..ssCCCCCCCCCCss.."],
       a:    ["..ssCCCCCCCCCCLc..", "..ssCCCCCCCCCCss..", "..cLCCCCCCCCCCss.."],
       b:    ["..cLCCCCCCCCCCss..", "..ssCCCCCCCCCCss..", "..ssCCCCCCCCCCLc.."],
-    },
+    },   // rows 19-21
     side: {
       rest: ["..cLCCCCCCCCLc....", "..ssCCCCCCCCss....", "..ssCCCCCCCCss...."],
       a:    ["..ssCCCCCCCCLc....", "..ssCCCCCCCCss....", "..cLCCCCCCCCss...."],
@@ -174,33 +178,36 @@
     const h = set && set[which];
     if (!h) return rows;
     const out = rows.slice();
-    out[18] = h[0]; out[19] = h[1]; out[20] = h[2];
+    out[19] = h[0]; out[20] = h[1]; out[21] = h[2];
     return out;
   }
 
-  // Rows 21-26, swapped in on alternate strides.
+  // Rows 22-26, swapped in on alternate strides. Five rows, not six: the head
+  // grew to 56% of his height (the ratio those sprites actually use) and the
+  // legs gave up the difference.
   const LEGS_APART = {
     down: ["...PPPPPPPPPPPP...","..PPPPP.....PPPP..",".PPPP.........PPP.",
-           ".bbbb.........bbb.",".bbbb.........bbb.","..................",],
+           ".bbbb.........bbb.",".bbbb.........bbb.",],
     up:   ["...PPPPPPPPPPPP...","..PPPPP.....PPPP..",".PPPP.........PPP.",
-           ".bbbb.........bbb.",".bbbb.........bbb.","..................",],
+           ".bbbb.........bbb.",".bbbb.........bbb.",],
     side: ["...PPPPPPPPPP.....","..PPPPP..PPPP.....",".PPPP.....PPP.....",
-           ".bbbb.....bbb.....",".bbbb.....bbb.....","..................",],
+           ".bbbb.....bbb.....",".bbbb.....bbb.....",],
   };
-  // Asleep: a dedicated pose, lying under the quilt with the head on the pillow.
-  // 30x14, head at the left, and the quilt line does the work of a body.
+
   const SLEEP = [
     "........hhhhhh................","......hhhhhhhhhh..............",
     ".....thhSSSSSShH..............",".....thSSSSSSSSH..............",
-    ".....thS--SS--SH..............",".....thSSSSSSSSH..............",
+    ".....thSmmSSmmSH..............",".....thSSSSSSSSH..............",
     "......hSSSSSSH................","......QQQQQQQQQQQQQQQQQQQQ....",
     ".....QQQQQQQQQQQQQQQQQQQQQQ...",".....QQQQQQQQQQQQQQQQQQQQQQ...",
     ".....qQQQQQQQQQQQQQQQQQQQQq...",".....qqQQQQQQQQQQQQQQQQQQqq...",
     "......qqqqqqqqqqqqqqqqqqqq....","..............................",
   ];
+
   const PX = {
     h:C.hair2, H:C.hair1, t:C.hair3,
-    s:C.skin2, S:C.skin3, d:C.skin1, E:C.ink, w:C.eyeLit,
+    s:C.skin2, S:C.skin3, d:C.skin1, E:C.eyeP, w:C.eyeLit,
+    W:C.eyeW, m:C.skin0, r:C.blush,
     C:C.shirt2, L:C.shirt3, c:C.shirt1,
     P:C.pant2, p:C.pant1, b:C.boot, k:C.ink,
     Q:C.quilt, q:C.cloth1, "-":C.ink,
@@ -1427,8 +1434,10 @@
 
   function drawBook(fx, fy, now) {
     const flip = Math.floor(now / 2600) % 2;
-    ctx.fillStyle = C.rackEdge; ctx.fillRect(fx + 7, fy - 10, 5, 5);
-    ctx.fillStyle = flip ? C.book : C.bookB; ctx.fillRect(fx + 8, fy - 9, 3, 3);
+    // Held at his lap, not his chin: the head is taller now, so the old height
+    // put the book across his face in the seated crop.
+    ctx.fillStyle = C.wood1; ctx.fillRect(fx + 6, fy - 7, 6, 4);
+    ctx.fillStyle = flip ? C.book : C.bookB; ctx.fillRect(fx + 7, fy - 6, 4, 2);
   }
 
   function drawPot(now) {
@@ -2396,7 +2405,7 @@
       } else if (!walking && fred.activity === "clean") {
         // Crouched over it, scrubbing. The cloth is the only moving part.
         const sweep = Math.floor(now / 220) % 2;
-        blit(withBlink(SPR.side, "side", now).slice(0, 21), fred.x - 9, fred.y - 19, fred.flip);
+        blit(withBlink(SPR.side, "side", now).slice(0, 22), fred.x - 9, fred.y - 20, fred.flip);
         if (mess) {                       // the cloth works the spill, not his lap
           ctx.fillStyle = C.cloth4;
           ctx.fillRect(mess.x - 4 + sweep * 3, mess.y - 2, 6, 2);
@@ -2442,7 +2451,7 @@
         const swing = (Math.floor(fred.dist / 6) & 1) ? "a" : "b";
         const base = withHands(withBlink(SPR[key], key, now),
                                moved > 0.05 ? swing : "rest", key);
-        const rows = apart ? base.slice(0, 21).concat(LEGS_APART[key]) : base;
+        const rows = apart ? base.slice(0, 22).concat(LEGS_APART[key]) : base;
         const rise = apart ? -1 : (moved > 0.05 ? 0 : breath);
         blit(rows, fred.x - 9, fred.y - 27 + rise, fred.flip);
       }
