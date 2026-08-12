@@ -64,6 +64,11 @@
     ledOn:"#f2555a", ledDim:"#4a1d22", bezel:"#16131f", bezelTop:"#2c2636",
     // Fred: warm against a cool room, with enough steps to shade at 18px wide
     hair1:"#2b1c12", hair2:"#4a3526", hair3:"#6b4d36",
+    // Ginger afro, three shades hue-shifting toward red as they darken, plus a
+    // silhouette shade darker than any of them. Stardew outlines its characters
+    // where Kindergarten deliberately does not.
+    afro1:"#5a2110", afro2:"#b8431f", afro3:"#e0763a", line:"#241812",
+    iris:"#3f6b4a",
     skin1:"#b57a52", skin2:"#e0a578", skin3:"#f2c9a0", eyeLit:"#fdf3e6",
     // Kindergarten's grammar: the sclera is a warm cream, never white, the
     // pupil is a blue-tinted near-black rather than pure #000, and the mouth is
@@ -84,87 +89,83 @@
   // Two leg positions per direction. The stride is carried by swapping the legs
   // AND lifting the whole sprite 1px — animating legs alone reads as shuffling.
   const SPR = {
-    // 18x27, rebuilt on the grammar the Kindergarten sprites actually use.
+    // 18x27, moved off the Kindergarten grammar toward Stardew's.
     //
-    // The eyes were the whole problem. There are only two designs that work at
-    // this size: a single dark dot with no white at all, or a 2x2 block that is
-    // mostly WHITE with one dark pupil pixel in it. The failure mode is exactly
-    // the middle -- a 2x2 that is mostly dark -- and that is what he had, three
-    // parts ink to one part highlight. A dark pixel only reads as a pupil once a
-    // brighter pixel establishes a surface for it to sit on; without that it is
-    // just a hole, and 8px of hole on a 90px face is a skull.
+    // Head plus hair is 44% of his height now rather than 56% -- Stardew world
+    // sprites run nearer a third, Kindergarten well over half, and this sits
+    // between them so he still reads as the same character. The body got the
+    // rows back, so he has a torso again instead of a head on legs.
     //
-    // Other rules taken from measuring those sprites: features crammed into the
-    // bottom 40% of the head with a big blank forehead; a wide flat mouth close
-    // under the eyes as a counterweight so the eyes are not the only marks; the
-    // brow is a MID-SKIN ridge, not a hair-coloured bar; no nose at all; no
-    // black outline anywhere -- the rim is a dark shade of the skin's own hue.
+    // What is Stardew and not Kindergarten: a dark silhouette line (Kindergarten
+    // has none at all), a lash line above each eye, and an iris colour distinct
+    // from the pupil. What is kept from before, because it is what stopped him
+    // looking dead: the eye is still mostly sclera with the dark part small, and
+    // both pupils sit on the same side rather than mirrored.
     //
-    // And nothing is mirrored. Both pupils sit top-left, so he is looking
-    // slightly left rather than staring dead ahead. That asymmetry is the single
-    // cheapest thing separating "character" from "mannequin".
+    // The afro is three shades plus the silhouette, hue-shifting toward red as
+    // it darkens, and it reads as the widest part of him -- which is the point.
     down: [
-      "......hhhhhh......","....hhhhhhhhhh....","...thhhhhhhhhhH...","..thhhhhhhhhhhhH..",
-      "..thhhhhhhhhhhhH..","..thSSSSSSSSSShH..","..thSSSSSSSSSShH..","..thSssSSSSssShH..",
-      "..thSSSSSSSSSShH..","..thSEWSSSSEWShH..","..thSWWSSSSWWShH..","..thrSSSSSSSSrhH..",
-      "..thSSSmmmmSSShH..","..thSSSSSSSSSShH..","...hSSSSSSSSSSh...","...CCCCCCCCCCCC...",
-      "..ccCCCCCCCCCCcc..","..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..",
-      "..ssCCCCCCCCCCss..","..ssCCCCCCCCCCss..","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
+      "....FFFFFFFFFF....","..FFAAAAAAAAAAFF..",".FFAGGGAAAAAAAAFF.",".FAGGGAAAAAAAAAAF.",
+      ".FAASSSSSSSSSSAAF.",".FAASSSSSSSSSSAAF.",".FAAkkkSSSSkkkAAF.",".FAAWIWSSSSWIWAAF.",
+      ".FAAWEWSSSSWEWAAF.",".FAArSSSSSSSSrAAF.",".FAASSSmmmmSSSAAF.","..FASSSSSSSSSSAF..",
+      "......SSSSSS......","...CCCCCCCCCCCC...","..ccCCCCCCCCCCcc..","..cLCCCCCCCCCCLc..",
+      "..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..","..ssCCCCCCCCCCss..",
+      "..ssCCCCCCCCCCss..","...PPPPPPPPPPPP...","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
       "...PPPPP..PPPPP...","...bbbb....bbbb...","...bbbb....bbbb...",
     ],
     up: [
-      "......hhhhhh......","....hhhhhhhhhh....","...thhhhhhhhhhH...","..thhhhhhhhhhhhH..",
-      "..thhhhhhhhhhhhH..","..thhtttthhhhhhH..","..thhhtthhhhhhhH..","..thhhhhhhhhhhhH..",
-      "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..",
-      "..tHHHHHHHHHHHHH..","..tHHHHHHHHHHHHH..","...HHHHHHHHHHHH...","...CCCCCCCCCCCC...",
-      "..ccCCCCCCCCCCcc..","..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..",
-      "..ssCCCCCCCCCCss..","..ssCCCCCCCCCCss..","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
+      "....FFFFFFFFFF....","..FFAAAAAAAAAAFF..",".FFAGGGAAAAAAAAFF.",".FAGGGAAAAAAAAAAF.",
+      ".FAGGAAAAAAAAAAAF.",".FAAAAAAAAAAAAAAF.",".FAAAAAAAAAAAAAAF.",".FAAAAAAAAAAAAAAF.",
+      ".FAAAAAAAAAAAAAAF.",".FFAAAAAAAAAAAAFF.",".FFFAAAAAAAAAAFFF.","..FFFFFFFFFFFFFF..",
+      "......SSSSSS......","...CCCCCCCCCCCC...","..ccCCCCCCCCCCcc..","..cLCCCCCCCCCCLc..",
+      "..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..","..ssCCCCCCCCCCss..",
+      "..ssCCCCCCCCCCss..","...PPPPPPPPPPPP...","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
       "...PPPPP..PPPPP...","...bbbb....bbbb...","...bbbb....bbbb...",
     ],
-    // Arms up over the head, held for a moment every half minute at the desk.
     stretch: [
-      "......hhhhhh......","....hhhhhhhhhh....","...thhhhhhhhhhH...","..thhhhhhhhhhhhH..",
-      "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..",
-      "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..",
-      ".sshhhhhhhhhhhhss.",".sshhhhhhhhhhhhss.",".ss.hhhhhhhhhh.ss.",".ccCCCCCCCCCCCCcc.",
-      "..cCCCCCCCCCCCCc..","...CCCCCCCCCCCC...","...CCCCCCCCCCCC...","...CCCCCCCCCCCC...",
-      "...CCCCCCCCCCCC...","...CCCCCCCCCCCC...","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
+      "....FFFFFFFFFF....","..FFAAAAAAAAAAFF..",".FFAAGGAAAAAAAAFF.",".FAAAGGAAAAAAAAAF.",
+      ".FAAAAAAAAAAAAAAF.",".FAAAAAAAAAAAAAAF.",".FAAAAAAAAAAAAAAF.",".FAAAAAAAAAAAAAAF.",
+      ".FAAAAAAAAAAAAAAF.","sFAAAAAAAAAAAAAAFs","sFAAAAAAAAAAAAAAFs","sSFAAAAAAAAAAAAFSs",
+      "sS....SSSSSS....Ss","cC.CCCCCCCCCCCC.Cc","..cCCCCCCCCCCCCc..","...CCCCCCCCCCCC...",
+      "...CCCCCCCCCCCC...","...CCCCCCCCCCCC...","...CCCCCCCCCCCC...","...CCCCCCCCCCCC...",
+      "...CCCCCCCCCCCC...","...PPPPPPPPPPPP...","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
       "...PPPPP..PPPPP...","...bbbb....bbbb...","...bbbb....bbbb...",
     ],
-    // The stretch, in profile, so it matches the pose he is already in.
-    sideStretch: [
-      ".....hhhhhh.......","...hhhhhhhhhh.....","..thhhhhhhhhhH....","..thhhhhhhhhhhH...",
-      "..thhhhhhhhhhhH...","..thSSSSSSSSSS....","..thSSSSSSSSSS....","..thSSSSSssSS.....",
-      "..thSSSSSSSSSS....","..thSSSSSEWSS.....","..thSSSSSWWSS.....","..thrSSSSSSSS.....",
-      "..thSSSSSmmmSSss..","..thSSSSSSSSSSss..","...hSSSSSSSSS.ss..","...CCCCCCCCCC.ss..",
-      "..cCCCCCCCCCCc....","..cLCCCCCCCCLc....","..cLCCCCCCCCLc....","..cLCCCCCCCCLc....",
-      "..cLCCCCCCCCLc....","..cLCCCCCCCCLc....","...PPPPPPPPPP.....","...PPPP..PPPP.....",
-      "...PPPP..PPPP.....","...bbb....bbb.....","...bbb....bbb.....",
-    ],
-    // Profile: hair at the back, one eye and the mouth set forward of centre.
+    // Profile facing right: the afro sits behind the head, the eye and mouth
+    // forward of centre.
     side: [
-      ".....hhhhhh.......","...hhhhhhhhhh.....","..thhhhhhhhhhH....","..thhhhhhhhhhhH...",
-      "..thhhhhhhhhhhH...","..thSSSSSSSSSS....","..thSSSSSSSSSS....","..thSSSSSssSS.....",
-      "..thSSSSSSSSSS....","..thSSSSSEWSS.....","..thSSSSSWWSS.....","..thrSSSSSSSS.....",
-      "..thSSSSSmmmSS....","..thSSSSSSSSSS....","...hSSSSSSSSS.....","...CCCCCCCCCC.....",
-      "..cCCCCCCCCCCc....","..cLCCCCCCCCLc....","..cLCCCCCCCCLc....","..cLCCCCCCCCLc....",
-      "..ssCCCCCCCCss....","..ssCCCCCCCCss....","...PPPPPPPPPP.....","...PPPP..PPPP.....",
-      "...PPPP..PPPP.....","...bbb....bbb.....","...bbb....bbb.....",
+      "...FFFFFFFF.......",".FFAAAAAAAAF......",".FAGGGAAAAAAAF....",".FAGGAAAAAAAAF....",
+      ".FAAAAASSSSSSSF...",".FAAAAASSSSSSSF...",".FAAAAASSSkkkSF...",".FAAAAASSSWIWSF...",
+      ".FAAAAASSSWEWSF...",".FAAAArSSSSSSSF...",".FAAAAASSSmmSSF...","..FAAAASSSSSSF....",
+      "......SSSSS.......","...CCCCCCCCCC.....","..cCCCCCCCCCCc....","..cLCCCCCCCCLc....",
+      "..cLCCCCCCCCLc....","..cLCCCCCCCCLc....","..cLCCCCCCCCLc....","..ssCCCCCCCCss....",
+      "..ssCCCCCCCCss....","...PPPPPPPPPP.....","...PPPP..PPPP.....","...PPPP..PPPP.....",
+      "...bbb....bbb.....","...bbb....bbb.....","..................",
+    ],
+    sideStretch: [
+      "...FFFFFFFF.......",".FFAAAAAAAAF......",".FAGGGAAAAAAAF....",".FAGGAAAAAAAAF....",
+      ".FAAAAASSSSSSSF...",".FAAAAASSSSSSSF...",".FAAAAASSSkkkSF...",".FAAAAASSSWIWSF...",
+      ".FAAAAASSSWEWSF...",".FAAAArSSSSSSSF...",".FAAAAASSSmmSSF...","..FAAAASSSSSSF.ss.",
+      "......SSSSS....ss.","...CCCCCCCCCC..ss.","..cCCCCCCCCCCc.ss.","..cCCCCCCCCCCc....",
+      "..cCCCCCCCCCCc....","..cCCCCCCCCCCc....","..cCCCCCCCCCCc....","..cCCCCCCCCCCc....",
+      "..cCCCCCCCCCCc....","...PPPPPPPPPP.....","...PPPP..PPPP.....","...PPPP..PPPP.....",
+      "...bbb....bbb.....","...bbb....bbb.....","..................",
     ],
   };
 
-  // Eye rows only, swapped in for a blink. The closed lid is the dark skin
-  // tone, not ink -- a black line across the eyes is another hole in the face.
+  // Eye rows only, swapped in for a blink. The lid is the dark skin tone, not
+  // ink -- a black line across the eyes is a hole in the face. The lash line on
+  // row 6 stays put, which is what keeps the eye readable while it is shut.
   const BLINK_ROWS = {
-    down: ["..thSSSSSSSSSShH..", "..thSmmSSSSmmShH.."],
-    side: ["..thSSSSSSSSSS....", "..thSSSSSmmSS....."],
+    down: [".FAASSSSSSSSSSAAF.", ".FAAmmmSSSSmmmAAF."],
+    side: [".FAAAAASSSSSSSF...", ".FAAAAASSSmmSSF..."],
   };
   const blinking = now => (now + 900) % 4300 < 130;
   function withBlink(rows, key, now) {
     const b = BLINK_ROWS[key];
     if (!b || !blinking(now)) return rows;
     const out = rows.slice();
-    out[9] = b[0]; out[10] = b[1];
+    out[7] = b[0]; out[8] = b[1];
     return out;
   }
 
@@ -176,7 +177,7 @@
       rest: ["..cLCCCCCCCCCCLc..", "..ssCCCCCCCCCCss..", "..ssCCCCCCCCCCss.."],
       a:    ["..ssCCCCCCCCCCLc..", "..ssCCCCCCCCCCss..", "..cLCCCCCCCCCCss.."],
       b:    ["..cLCCCCCCCCCCss..", "..ssCCCCCCCCCCss..", "..ssCCCCCCCCCCLc.."],
-    },   // rows 19-21
+    },   // rows 18-20
     side: {
       rest: ["..cLCCCCCCCCLc....", "..ssCCCCCCCCss....", "..ssCCCCCCCCss...."],
       a:    ["..ssCCCCCCCCLc....", "..ssCCCCCCCCss....", "..cLCCCCCCCCss...."],
@@ -188,20 +189,18 @@
     const h = set && set[which];
     if (!h) return rows;
     const out = rows.slice();
-    out[19] = h[0]; out[20] = h[1]; out[21] = h[2];
+    out[18] = h[0]; out[19] = h[1]; out[20] = h[2];
     return out;
   }
 
-  // Rows 22-26, swapped in on alternate strides. Five rows, not six: the head
-  // grew to 56% of his height (the ratio those sprites actually use) and the
-  // legs gave up the difference.
+  // Rows 21-26, swapped in on alternate strides.
   const LEGS_APART = {
     down: ["...PPPPPPPPPPPP...","..PPPPP.....PPPP..",".PPPP.........PPP.",
-           ".bbbb.........bbb.",".bbbb.........bbb.",],
+           ".bbbb.........bbb.",".bbbb.........bbb.","..................",],
     up:   ["...PPPPPPPPPPPP...","..PPPPP.....PPPP..",".PPPP.........PPP.",
-           ".bbbb.........bbb.",".bbbb.........bbb.",],
+           ".bbbb.........bbb.",".bbbb.........bbb.","..................",],
     side: ["...PPPPPPPPPP.....","..PPPPP..PPPP.....",".PPPP.....PPP.....",
-           ".bbbb.....bbb.....",".bbbb.....bbb.....",],
+           ".bbbb.....bbb.....",".bbbb.....bbb.....","..................",],
   };
 
   const SLEEP = [
@@ -216,10 +215,11 @@
 
   const PX = {
     h:C.hair2, H:C.hair1, t:C.hair3,
+    A:C.afro2, F:C.afro1, G:C.afro3, k:C.line, I:C.iris,
     s:C.skin2, S:C.skin3, d:C.skin1, E:C.eyeP, w:C.eyeLit,
     W:C.eyeW, m:C.skin0, r:C.blush,
     C:C.shirt2, L:C.shirt3, c:C.shirt1,
-    P:C.pant2, p:C.pant1, b:C.boot, k:C.ink,
+    P:C.pant2, p:C.pant1, b:C.boot,
     Q:C.quilt, q:C.cloth1, "-":C.ink,
     a:C.catA, B:C.catB, e:C.catC, y:C.catEye,
   };
@@ -2390,8 +2390,8 @@
       // Standing still is the least informative thing he can do, so every
       // arrival hands off to a pose that says what he is actually doing.
       if (!walking && fred.activity === "read") {
-        blit(withBlink(SPR.side, "side", now).slice(0, 22),
-             fred.x - 9, fred.y - 22 + breath, true);
+        blit(withBlink(SPR.side, "side", now).slice(0, 21),
+             fred.x - 9, fred.y - 21 + breath, true);
         drawBook(fred.x - 9, fred.y + breath, now);
       } else if (!walking && fred.activity === "clean") {
         // Crouched over it, scrubbing. The cloth is the only moving part.
@@ -2415,11 +2415,11 @@
         // it. The stretch has its own profile frame for the same reason -- the
         // back-view one would have snapped him ninety degrees for two seconds.
         if (now % 26000 < 1700) {
-          blit(SPR.sideStretch.slice(0, 22), fred.x - 9, fred.y - 23 + breath, true);
+          blit(SPR.sideStretch.slice(0, 21), fred.x - 9, fred.y - 22 + breath, true);
         } else {
           const h = ["a", "b"][Math.floor(now / 150) % 2];
           const rows = withHands(withBlink(SPR.side, "side", now), h, "side");
-          blit(rows.slice(0, 22), fred.x - 9, fred.y - 22 + breath, true);
+          blit(rows.slice(0, 21), fred.x - 9, fred.y - 21 + breath, true);
         }
       } else if (!walking && fred.activity === "inspect") {
         // Checking a rack: he leans in and out, and one hand comes up to it.
@@ -2446,7 +2446,7 @@
         const swing = (Math.floor(fred.dist / 6) & 1) ? "a" : "b";
         const base = withHands(withBlink(SPR[key], key, now),
                                moved > 0.05 ? swing : "rest", key);
-        const rows = apart ? base.slice(0, 22).concat(LEGS_APART[key]) : base;
+        const rows = apart ? base.slice(0, 21).concat(LEGS_APART[key]) : base;
         const rise = apart ? -1 : (moved > 0.05 ? 0 : breath);
         blit(rows, fred.x - 9, fred.y - 27 + rise, fred.flip);
       }
