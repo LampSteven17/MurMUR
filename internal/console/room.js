@@ -137,6 +137,23 @@
     return out;
   }
 
+  // Rows 18-20 -- the forearms and hands. Swapped to stagger them, so working
+  // hands alternate instead of the whole body just bobbing. At 18px wide there
+  // is no room to animate fingers; moving one hand a row before the other is
+  // the entire vocabulary available and it is enough to read as busy.
+  const HANDS = {
+    rest: ["..cLCCCCCCCCCCLc..", "..ssCCCCCCCCCCss..", "..ssCCCCCCCCCCss.."],
+    a:    ["..ssCCCCCCCCCCLc..", "..ssCCCCCCCCCCss..", "..cLCCCCCCCCCCss.."],
+    b:    ["..cLCCCCCCCCCCss..", "..ssCCCCCCCCCCss..", "..ssCCCCCCCCCCLc.."],
+  };
+  function withHands(rows, which) {
+    const h = HANDS[which];
+    if (!h) return rows;
+    const out = rows.slice();
+    out[18] = h[0]; out[19] = h[1]; out[20] = h[2];
+    return out;
+  }
+
   // Rows 21-26, swapped in on alternate strides.
   const LEGS_APART = {
     down: ["...PPPPPPPPPPPP...","..PPPPP.....PPPP..",".PPPP.........PPP.",
@@ -2347,12 +2364,20 @@
           ctx.fillRect(mess.x - 4 + sweep * 3, mess.y - 2, 6, 1);
         }
       } else if (!walking && fred.activity === "cook") {
+        // Slower than typing, and the whole body rocks with it -- stirring is a
+        // shoulder movement, not a wrist one.
         const stir = Math.floor(now / 300) % 2;
-        blit(SPR.up, fred.x - 9, fred.y - 27 - stir, false);
+        const h = ["a", "b"][Math.floor(now / 300) % 2];
+        blit(withHands(SPR.up, h), fred.x - 9, fred.y - 27 - stir, false);
       } else if (!walking && fred.activity === "type") {
-        blit(SPR.up.slice(0, 22), fred.x - 9, fred.y - 22 + breath, false);
+        // Hands alternate quickly; the body still breathes underneath.
+        const h = ["a", "b"][Math.floor(now / 150) % 2];
+        blit(withHands(SPR.up, h).slice(0, 22), fred.x - 9, fred.y - 22 + breath, false);
       } else if (!walking && fred.activity === "inspect") {
-        blit(SPR.up.slice(0, 24), fred.x - 9, fred.y - 24 + (Math.floor(now / 260) % 2), false);
+        // Checking a rack: he leans in and out, and one hand comes up to it.
+        const lean = Math.floor(now / 260) % 2;
+        const h = (Math.floor(now / 520) % 2) ? "a" : "rest";
+        blit(withHands(SPR.up, h).slice(0, 24), fred.x - 9, fred.y - 24 + lean, false);
       } else if (!walking && fred.activity === "fight") {
         // Facing the fire with a bucket. He braces on the throw, which is the
         // only frame that reads as effort at 12px wide.
