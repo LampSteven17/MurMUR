@@ -1434,11 +1434,11 @@
     const rdy = Math.round(RACK_D * DEPTH_RISE), rdx = Math.round(RACK_D * DEPTH_SHEAR);
     for (const r of racks) {
       const box = {x0: r.x, y0: r.base - rdy, x1: r.x + RACK_W + rdx, y1: r.base,
-                   zTop: RACK_H + TOP_H};
+                   zTop: RACK_H};
       SOLIDS.push(box);
       // The landable surface is the rack's top face, RACK_H above the floor.
       PERCHES.push({x0: r.x, y0: r.base - rdy, x1: r.x + RACK_W + rdx, y1: r.base,
-                    z: RACK_H, rack: r});
+                    z: RACK_H, rack: r, cx: r.x + RACK_W / 2, cy: r.base - 3});
     }
     // The partition, in two pieces so the doorway stays open.
     const px = BUNK.x + BUNK.w;
@@ -1725,6 +1725,13 @@
       "..aBBBBBBBBa..","..aeeBBBBBBa..","...aaeeeeeaa..",".....aaaaa....",
       "..............",
     ],
+    // Airborne: front legs forward, back legs trailing, body stretched. A cat
+    // in the air is a longer shape than a cat on the ground.
+    leap: [
+      "..a.......a.a.","..aa.....aaaaa",".a.aa...aBByBa","a...aaaaBBBBBa",
+      "....aBBBBBBBBa","..aaBBBBBBBBa.",".aa.aeeeeeea..","a.....aa..aa..",
+      "..............",
+    ],
     // Sat upright, tail curled round the feet.
     sit: [
       ".....a.a......","....aaaaa.....","....ayBya.....","....aBBBa.....",
@@ -1738,7 +1745,49 @@
   const cat = {
     x: 120, y: 250, dir: 1, state: "prowl", until: 0, tx: 120, ty: 250,
     dist: 0, naps: 0,
+    // Height above the floor. x and y stay the FLOOR position and never change
+    // meaning -- collision, pathing and depth sorting all keep using them, and
+    // only the draw call subtracts z. That is the whole trick to a jump in a
+    // top-down view.
+    z: 0, vz: 0, grounded: true, standingOn: null, prevZ: 0,
   };
+  const GRAV = 900;              // px/s^2
+  const JUMP_V0 = 330;           // reaches ~60px, a shade over a rack
+
+  // The highest surface under her that she could be landing on. Only surfaces
+  // she was above last frame count, so she cannot land on the side of a rack
+  // she is passing.
+  function groundUnder(e, hw, fh) {
+    let g = 0, on = null;
+    for (let i = 0; i < SOLIDS.length; i++) {
+      const s = SOLIDS[i];
+      if (s.zTop === undefined || s.zTop >= 1e9) continue;
+      if (!footOverlaps(e.x, e.y, hw, fh, s)) continue;
+      if (s.zTop > g && s.zTop <= e.prevZ + 1.5) { g = s.zTop; on = s; }
+    }
+    return {g, on};
+  }
+
+  function catGravity(dt) {
+    cat.prevZ = cat.z;
+    if (cat.grounded && cat.vz === 0) {
+      // Still supported? Walking off the edge of a rack should drop her.
+      const {g, on} = groundUnder(cat, CAT_HW, CAT_FH);
+      if (g < cat.z - 0.5) { cat.grounded = false; cat.standingOn = null; }
+      else { cat.z = g; cat.standingOn = on; return; }
+    }
+    cat.vz -= GRAV * dt / 1000;
+    cat.z += cat.vz * dt / 1000;
+    const {g, on} = groundUnder(cat, CAT_HW, CAT_FH);
+    // Swept on the z axis: was she above it last frame and below it now? A bare
+    // z <= g test misses the surface entirely on a fast fall.
+    if (cat.vz <= 0 && cat.prevZ >= g && cat.z <= g) {
+      cat.z = g; cat.vz = 0; cat.grounded = true; cat.standingOn = on;
+    } else if (cat.z > g) {
+      cat.grounded = false; cat.standingOn = null;
+    }
+    if (cat.z < 0) { cat.z = 0; cat.vz = 0; cat.grounded = true; cat.standingOn = null; }
+  }
   // Where she is allowed to be: the studio floor and the near aisle, not inside
   // the racks and not through the back wall.
   const CAT_BOUNDS = {x0: 16, x1: 452, y0: 108, y1: 274};
@@ -1759,10 +1808,11 @@
   function catPick() {
     const r = Math.random();
     if (mess) return "prowl";                 // she is not sorry, but she is busy
-    if (r < 0.30) return "play";
-    if (r < 0.48) return "nap";
-    if (r < 0.60) return "knock";
-    if (r < 0.75) return "sit";
+    if (r < 0.24) return "play";
+    if (r < 0.40) return "nap";
+    if (r < 0.50) return "knock";
+    if (r < 0.62) return "sit";
+    if (r < 0.80 && PERCHES.length) return "leap";
     return "prowl";
   }
 
@@ -1787,6 +1837,16 @@
       cat.until = now + 20000 + Math.random() * 25000;
     } else if (state === "sit") {
       cat.until = now + 5000 + Math.random() * 7000;
+    } else if (state === "leap") {
+      // Pick a rack and walk to the floor directly in front of it; the jump
+      // itself starts once she gets there.
+      const p = PERCHES[Math.floor(Math.random() * PERCHES.length)];
+      cat.perch = p;
+      cat.launched = false;
+      catGo(p.cx, p.y1 + 12);
+      cat.until = now + 16000;
+    } else if (state === "perch") {
+      cat.until = now + 9000 + Math.random() * 9000;
     } else if (state === "knock") {
       const k = knockables()[Math.floor(Math.random() * 2)];
       cat.target = k;
@@ -1796,10 +1856,59 @@
   }
 
   function catStep(dt, now) {
-    nudgeFree(cat, CAT_HW, CAT_FH);
+    catGravity(dt);
+    // Only unstick her on the floor: doing it mid-air would teleport her out of
+    // a perfectly good jump.
+    if (cat.grounded && cat.z === 0) nudgeFree(cat, CAT_HW, CAT_FH);
+
+    if (cat.state === "leap") {
+      const p = cat.perch;
+      if (!p) { catEnter("prowl", now); return; }
+      if (!cat.launched && cat.grounded &&
+          Math.hypot(cat.x - p.cx, cat.y - (p.y1 + 12)) < 6) {
+        cat.vz = JUMP_V0; cat.launched = true; cat.grounded = false;
+        cat.tx = p.cx; cat.ty = p.cy;
+      }
+      if (cat.launched) {
+        // Airborne: drive her horizontally toward the rack top. slideTo is
+        // given her z, so once she is above the rack it stops blocking and she
+        // sails over the footprint instead of bouncing off its side.
+        const dx = cat.tx - cat.x, dy = cat.ty - cat.y, d = Math.hypot(dx, dy);
+        if (d > 0.6) {
+          const sp = 70 * dt / 1000, k = Math.min(1, sp / d);
+          slideTo(cat, cat.x + dx * k, cat.y + dy * k, CAT_HW, CAT_FH, cat.z, 8);
+          if (Math.abs(dx) > 0.3) cat.dir = dx > 0 ? 1 : -1;
+        }
+        if (cat.grounded) {
+          if (cat.standingOn && cat.z > 4) catEnter("perch", now);
+          else catEnter("prowl", now);
+        }
+        return;
+      }
+    }
+
+    if (cat.state === "perch") {
+      // Sitting on top of a rack. When the time is up, hop off the front.
+      if (now > cat.until) {
+        cat.vz = 150; cat.grounded = false;
+        cat.tx = cat.x; cat.ty = (cat.standingOn ? cat.standingOn.y1 : cat.y) + 16;
+        catEnter("leapdown", now);
+      }
+      return;
+    }
+    if (cat.state === "leapdown") {
+      const dy = cat.ty - cat.y;
+      if (Math.abs(dy) > 0.6) {
+        const sp = 55 * dt / 1000;
+        slideTo(cat, cat.x, cat.y + Math.sign(dy) * Math.min(sp, Math.abs(dy)),
+                CAT_HW, CAT_FH, cat.z, 8);
+      }
+      if (cat.grounded && cat.z === 0) catEnter("prowl", now);
+      return;
+    }
     const d = Math.hypot(cat.tx - cat.x, cat.ty - cat.y);
     const moving = (cat.state === "prowl" || cat.state === "play" || cat.state === "knock" ||
-                    (cat.state === "nap" && d > 2));
+                    cat.state === "leap" || (cat.state === "nap" && d > 2));
     if (moving && d > 1.5) {
       // Follow the routed waypoints rather than the target directly, and move
       // with slide so a bad path or a moving ball still cannot push her into
@@ -1891,9 +2000,18 @@
   }
 
   function drawCat(now) {
-    const x = Math.round(cat.x) - 7, y = Math.round(cat.y) - 8;
-    ctx.fillStyle = "rgba(11,10,16,.40)";
-    ctx.fillRect(Math.round(cat.x) - 5, Math.round(cat.y) - 1, 11, 2);
+    const surf = cat.standingOn ? cat.standingOn.zTop : 0;
+    const air = Math.max(0, cat.z - surf);
+    // The shadow sits on whatever is UNDER her, not on the floor, and shrinks
+    // with the gap. Without it a jumping cat is indistinguishable from a cat
+    // that walked up-screen -- the shadow is the only thing carrying height.
+    const sc = Math.max(0.4, 1 - air / 46);
+    ctx.fillStyle = "rgba(11,10,16," + (0.42 * sc).toFixed(2) + ")";
+    const sw = Math.round(11 * sc), sy = Math.round(cat.y - surf);
+    ctx.fillRect(Math.round(cat.x) - (sw >> 1), sy - 1, sw, 2);
+
+    // Draw at (x, y - z): only the sprite moves up, the floor position does not.
+    const x = Math.round(cat.x) - 7, y = Math.round(cat.y) - 8 - Math.round(cat.z);
     if (cat.state === "nap" && Math.hypot(cat.tx - cat.x, cat.ty - cat.y) < 3) {
       blit(CAT.curl, x, y, cat.dir < 0);
       if (Math.floor(now / 1100) % 2) {
@@ -1902,7 +2020,8 @@
       }
       return;
     }
-    if (cat.state === "sit") { blit(CAT.sit, x, y, cat.dir < 0); return; }
+    if (cat.state === "sit" || cat.state === "perch") { blit(CAT.sit, x, y, cat.dir < 0); return; }
+    if (!cat.grounded) { blit(CAT.leap, x, y, cat.dir < 0); return; }
     // Distance-driven, same as Fred: time-driven legs slide when speed changes.
     const f = (Math.floor(cat.dist / 5) & 1) ? CAT.walkB : CAT.walkA;
     blit(f, x, y, cat.dir < 0);
@@ -2112,7 +2231,11 @@
       const pr = PROPS[key];
       items.push({sortY: pr.P.y + pr.P.h, sortX: pr.P.x, prop: pr});
     }
-    items.push({sortY: cat.y, sortX: cat.x, cat: true});
+    // Standing on a rack her floor y is behind the rack's own baseline, so the
+    // rack would draw after her and hide her. Riders inherit their platform's
+    // sort key -- the standard 2.5D rule.
+    items.push({sortY: cat.standingOn ? cat.standingOn.y1 + 0.5 : cat.y,
+                sortX: cat.x, cat: true});
     items.push({sortY: ball.y, sortX: ball.x, ball: true});
     if (mess) items.push({sortY: mess.y, sortX: mess.x, spill: true});
 
@@ -2477,6 +2600,8 @@
     window.__catKnock = () => { catEnter("knock", performance.now ? performance.now() : 0); };
     // Physics assertions for the harness: is anything currently overlapping a
     // solid? Nothing should ever be, at any point in a long run.
+    window.__catLeap = () => { catEnter("leap", performance.now()); return true; };
+    window.__rackHeight = () => RACK_H;
     window.__ballSet = (x, y, vx, vy) => { ball.x = x; ball.y = y; ball.vx = vx; ball.vy = vy; };
     window.__ballState = () => ({x: ball.x, y: ball.y, vx: ball.vx, vy: ball.vy});
     window.__physics = () => ({
@@ -2488,6 +2613,8 @@
                   !canStand(fred.x, fred.y, FRED_HW, FRED_FH)},
       cat:  {x: Math.round(cat.x), y: Math.round(cat.y), z: Math.round(cat.z || 0),
              st: cat.state, stuck: Math.round(cat.stuck || 0),
+             onRack: !!(cat.standingOn && cat.standingOn.zTop === RACK_H),
+             grounded: cat.grounded,
              bad: !(cat.z > 0) && !canStand(cat.x, cat.y, CAT_HW, CAT_FH, cat.z || 0)},
       ball: {x: Math.round(ball.x), y: Math.round(ball.y),
              bad: !!hitsSolid(ball.x - 2, ball.y - 2, ball.x + 2, ball.y + 2)},
