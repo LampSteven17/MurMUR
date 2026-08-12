@@ -107,6 +107,19 @@
       "..ssCCCCCCCCCCss..","...PPPPPPPPPPPP...","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
       "...PPPPP..PPPPP...","...bbbb....bbbb...","...bbbb....bbbb...",
     ],
+    // Arms up over the head. He holds this for a moment every half-minute or so
+    // at the desk -- a character who does the identical thing for the entire
+    // hour he is sat there stops reading as a person and starts reading as a
+    // looping asset.
+    stretch: [
+      "......hhhhhh......","....hhhhhhhhhh....","...thhhhhhhhhhH...","..thhhhhhhhhhhhH..",
+      "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..",
+      "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..",".sshhhhhhhhhhhhss.",".ss.hhhhhhhhh.ss..",
+      ".ss...SSSSSS..ss..",".ccCCCCCCCCCCCCcc.","..cCCCCCCCCCCCCc..","...CCCCCCCCCCCC...",
+      "...CCCCCCCCCCCC...","...CCCCCCCCCCCC...","...CCCCCCCCCCCC...","...CCCCCCCCCCCC...",
+      "...CCCCCCCCCCCC...","...PPPPPPPPPPPP...","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
+      "...PPPPP..PPPPP...","...bbbb....bbbb...","...bbbb....bbbb...",
+    ],
     // Profile: hair at the back, one eye set forward of centre, far arm hidden.
     // Drawn facing right; left is the mirror.
     side: [
@@ -2381,9 +2394,13 @@
         const h = ["a", "b"][Math.floor(now / 300) % 2];
         blit(withHands(SPR.up, h, "up"), fred.x - 9, fred.y - 27 - stir, false);
       } else if (!walking && fred.activity === "type") {
-        // Hands alternate quickly; the body still breathes underneath.
-        const h = ["a", "b"][Math.floor(now / 150) % 2];
-        blit(withHands(SPR.up, h, "up").slice(0, 22), fred.x - 9, fred.y - 22 + breath, false);
+        if (now % 26000 < 1700) {          // a stretch, roughly every half minute
+          blit(SPR.stretch.slice(0, 22), fred.x - 9, fred.y - 23 + breath, false);
+        } else {
+          // Hands alternate quickly; the body still breathes underneath.
+          const h = ["a", "b"][Math.floor(now / 150) % 2];
+          blit(withHands(SPR.up, h, "up").slice(0, 22), fred.x - 9, fred.y - 22 + breath, false);
+        }
       } else if (!walking && fred.activity === "inspect") {
         // Checking a rack: he leans in and out, and one hand comes up to it.
         const lean = Math.floor(now / 260) % 2;
