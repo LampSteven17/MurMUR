@@ -114,9 +114,9 @@
     ],
     up: [
       "......hhhhhh......","....hhhhhhhhhh....","...thhhhhhhhhhH...","..thhhhhhhhhhhhH..",
+      "..thhhhhhhhhhhhH..","..thhtttthhhhhhH..","..thhhtthhhhhhhH..","..thhhhhhhhhhhhH..",
       "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..",
-      "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..",
-      "..thhhhhhhhhhhhH..","..thhhhhhhhhhhhH..","...hhhhhhhhhhhh...","...CCCCCCCCCCCC...",
+      "..tHHHHHHHHHHHHH..","..tHHHHHHHHHHHHH..","...HHHHHHHHHHHH...","...CCCCCCCCCCCC...",
       "..ccCCCCCCCCCCcc..","..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..","..cLCCCCCCCCCCLc..",
       "..ssCCCCCCCCCCss..","..ssCCCCCCCCCCss..","...PPPPPPPPPPPP...","...PPPPP..PPPPP...",
       "...PPPPP..PPPPP...","...bbbb....bbbb...","...bbbb....bbbb...",
@@ -920,7 +920,7 @@
       : 1;
     if (!FLICKER.has(i)) return hum * brown;
     const burst = Math.floor(now / 1500) + i * 13;
-    if (hash2(i * 97, burst) > 0.34) {
+    if (hash2(i * 97, burst) > 0.56) {
       return (hash2(i * 41, Math.floor(now / 45)) > 0.46 ? hum : 0.04) * brown;
     }
     return hum * brown;
