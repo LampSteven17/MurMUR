@@ -338,9 +338,9 @@
     };
   };
 
-  const FRIDGE  = piece(14,  20, 14, 30, backBase(30, 14));
+  const FRIDGE  = piece(10,  20, 14, 30, backBase(30, 14));   // hard into the corner
   const KITCHEN = piece(56,  56, 18, 15, backBase(15, 18));
-  const SHELF   = piece(136, 20, 10, 30, backBase(30, 10));
+  const SHELF   = piece(140, 20, 10, 30, backBase(30, 10));   // flush to the side wall
   // The bed's long axis runs left-right because that is how Fred lies on it;
   // its top face has to be wide enough for a 30px sprite and deep enough for 14
   // rows of one, which is what sets w and d rather than any real bed's ratio.
@@ -789,7 +789,7 @@
   // Which tubes have given up. The second L is dead outright; the I and the
   // final B stutter.
   const DEAD = new Set([10]);
-  const FLICKER = new Set([5, 12]);
+  const FLICKER = new Set([1, 5, 8, 12]);
 
   // Each glyph is baked once: halo, then tube, then hot core. Per-frame this is
   // one drawImage at an alpha instead of ~500 fillRects, which is what makes a
@@ -850,12 +850,19 @@
       return 0;
     }
     const hum = 0.88 + 0.12 * Math.sin(now / 620 + i);   // mains ripple
-    if (!FLICKER.has(i)) return hum;
-    const burst = Math.floor(now / 2600) + i * 13;
-    if (hash2(i * 97, burst) > 0.58) {
-      return hash2(i * 41, Math.floor(now / 55)) > 0.42 ? hum : 0.05;
+    // Brownout: the whole sign sags together every so often, because they share
+    // one tired transformer. Applied to healthy and failing tubes alike, which
+    // is what makes them read as being on the same circuit.
+    const bo = Math.floor(now / 5200);
+    const brown = hash2(701, bo) > 0.80
+      ? 0.45 + 0.3 * Math.sin(now / 40)
+      : 1;
+    if (!FLICKER.has(i)) return hum * brown;
+    const burst = Math.floor(now / 1500) + i * 13;
+    if (hash2(i * 97, burst) > 0.34) {
+      return (hash2(i * 41, Math.floor(now / 45)) > 0.46 ? hum : 0.04) * brown;
     }
-    return hum;
+    return hum * brown;
   }
 
   function signTextWidth() {
