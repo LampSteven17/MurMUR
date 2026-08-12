@@ -384,7 +384,7 @@
   // A tall piece now correctly rises UP the wall in view, which is what a tall
   // thing standing against a wall does.
   const WALL_Y = WALL_H + 2;
-  const WINDOW = {x:36, y:10, w:96, h:44};
+  const WINDOW = {x:43, y:10, w:88, h:44};
   const backBase = (h, d) => WALL_Y + Math.round(d * DEPTH_RISE);
   const piece = (x, w, d, h, base) =>
     ({x, w, d, bh: h, y: base - h - Math.round(d * DEPTH_RISE),
@@ -405,7 +405,7 @@
     };
   };
   const FRIDGE  = piece(10,  20, 14, 30, backBase(30, 14));   // hard into the corner
-  const KITCHEN = piece(56,  56, 18, 15, backBase(15, 18));
+  const KITCHEN = piece(59,  56, 18, 15, backBase(15, 18));   // centred under the window
   const SHELF   = piece(140, 20, 10, 30, backBase(30, 10));   // flush to the side wall
   // The bed's long axis runs left-right because that is how Fred lies on it;
   // its top face has to be wide enough for a 30px sprite and deep enough for 14
@@ -413,9 +413,9 @@
   const BED     = piece(12,  38, 30,  8, 190);
   const TVST    = piece(100, 36, 16, 10, 190);
   const TV      = piece(108, 24,  8, 16, TVST.y + TVST.h - TVST.bh - 3);
-  const DESK    = piece(12,  52, 22, 13, 232);
-  const STOOL   = piece(30,  22, 12, 10, 248);
-  const CHAIR   = piece(100, 30, 16, 11, 258);
+  // One seat and one screen. The desk PC and the armchair are gone -- he sits on
+  // this stool in front of the telly, and the telly is his terminal.
+  const STOOL   = piece(107, 22, 12, 10, 236);
   const PLANT   = piece(142, 14, 10, 11, 268);
   const DOOR = {y0:238, y1:280};
   const RACK_W = 28, RACK_H = 48, TOP_H = 9, RACK_D = 16;
@@ -628,11 +628,26 @@
 
     box(SHELF, MAT.wood);
     const sT = faceTop(SHELF);
-    const spines = [C.book, C.bookB, C.bookC, C.book, C.bookB, C.bookC];
-    for (let i = 0; i < spines.length; i++) {
-      if (i % 2 === 0) { b.fillStyle = C.wood2; b.fillRect(SHELF.x + 2, sT + 1 + i * 5, SHELF.w - 4, 1); }
-      b.fillStyle = spines[i];
-      b.fillRect(SHELF.x + 3 + (i % 2), sT + 2 + i * 5, SHELF.w - 7 - (i % 3), 3);
+    // Three boards with books standing ON them. The old version was six
+    // horizontal colour bars floating between two boards, and the bottom one
+    // hung off the base of the unit. Widths are chosen to sum exactly to the
+    // inner width, so nothing can run past the side.
+    const shX = SHELF.x + 2, shW = SHELF.w - 4;
+    const SPINE_W = [3, 2, 3, 2, 2];
+    const SPINE_C = [C.book, C.bookB, C.bookC, C.bookB, C.book];
+    for (let sh = 0; sh < 3; sh++) {
+      const board = sT + 9 + sh * 10;
+      b.fillStyle = C.wood2; b.fillRect(SHELF.x + 1, board, SHELF.w - 2, 1);
+      b.fillStyle = C.wood1; b.fillRect(SHELF.x + 1, board + 1, SHELF.w - 2, 1);
+      let x = shX;
+      for (let i = 0; i < SPINE_W.length; i++) {
+        const w2 = SPINE_W[i], h2 = 6 - ((i + sh) % 2);
+        if (x + w2 > shX + shW) break;
+        b.fillStyle = SPINE_C[(i + sh * 2) % SPINE_C.length];
+        b.fillRect(x, board - h2, w2, h2);
+        b.fillStyle = C.wood1; b.fillRect(x, board - h2, w2, 1);   // shadow, not a cap
+        x += w2 + 1;
+      }
     }
 
     // --- middle band -------------------------------------------------------
@@ -647,36 +662,10 @@
     box(TV, MAT.steel);
     const tT = faceTop(TV);
     b.fillStyle = C.ink; b.fillRect(TV.x + 2, tT + 2, TV.w - 4, TV.bh - 6);
-    b.fillStyle = C.tvGlow; b.fillRect(TV.x + 3, tT + 3, TV.w - 6, TV.bh - 8);
-    b.fillStyle = C.stl5; b.fillRect(TV.x + 4, tT + 5, 6, 1);
-    b.fillRect(TV.x + 4, tT + 8, 11, 1);
     b.fillStyle = C.on; b.fillRect(TV.x + TV.w - 4, tT + TV.bh - 3, 1, 1);
+    // With the PC gone this screen is what he works at, so it is the terminal.
+    TERMINAL = {x: TV.x + 3, y: tT + 3, w: TV.w - 6, h: TV.bh - 8};
 
-    // --- front -------------------------------------------------------------
-    // Desk. Keyboard, mug and monitor go on the TOP face. They were all drawn
-    // at dT+N, which is the front face -- the same plane error as the hobs, and
-    // why the keyboard looked like it was hanging off the front edge.
-    const dc = box(DESK, MAT.wood);
-    const dDy = Math.round(DESK.d * DEPTH_RISE), dDx = Math.round(DESK.d * DEPTH_SHEAR);
-    const dTopRow = (DESK.y + DESK.h) - DESK.bh - 1;
-
-    fillTopBand(b, dc, C.stl2, 0.20, 0.72, 0.06, 0.30);        // keyboard
-    fillTopBand(b, dc, C.stl4, 0.20, 0.72, 0.27, 0.30);
-    fillTopBand(b, dc, C.stl1, 0.23, 0.69, 0.12, 0.15);
-    fillTopBand(b, dc, C.stl1, 0.23, 0.69, 0.19, 0.22);
-
-    const mBase = dTopRow - 6;                                  // 6 rows back
-    const mX = DESK.x + Math.round(dDx * 7 / dDy) + 12;
-    const M = {x: mX, w: 26, h: 17};
-    drawBox(b, M.x, mBase, M.w, 6, M.h, MAT.steel, {shadow: false, bare: true});
-    b.fillStyle = C.stl1; b.fillRect(M.x + 10, mBase, 6, 2);    // stalk + foot
-    b.fillStyle = C.stl4; b.fillRect(M.x + 7, mBase + 1, 12, 1);
-    b.fillStyle = C.ink;  b.fillRect(M.x + 2, mBase - M.h + 2, M.w - 4, M.h - 6);
-    TERMINAL = {x: M.x + 2, y: mBase - M.h + 2, w: M.w - 4, h: M.h - 6};
-
-    const mugB = dTopRow - 3, mugX = DESK.x + Math.round(dDx * 4 / dDy) + 44;
-    drawBox(b, mugX, mugB, 4, 4, 5, MAT.wood, {shadow: false, bare: true});
-    b.fillStyle = C.wood3; b.fillRect(mugX + 4, mugB - 4, 1, 2);
   }
 
   // --- props Fred can be on ------------------------------------------------
@@ -695,35 +684,28 @@
   // key cannot express.
   function bedBack(g) {
     const bc = drawBox(g, BED.x, BED.y + BED.h, BED.w, BED.d, BED.bh, MAT.wood);
-    fillTopBand(g, bc, C.cloth2, 0.04, 0.96, 0.00, 0.98);
-    fillTopBand(g, bc, C.cloth3, 0.04, 0.96, 0.94, 0.98);
-    fillTopBand(g, bc, C.quilt,  0.04, 0.96, 0.00, 0.48);
-    fillTopBand(g, bc, "#8a5866", 0.04, 0.96, 0.46, 0.48);
-    for (const v of [0.12, 0.24, 0.36]) fillTopBand(g, bc, "#8a5866", 0.04, 0.96, v, v + 0.02);
-    fillTopBand(g, bc, C.pillow, 0.10, 0.42, 0.62, 0.94);
-    fillTopBand(g, bc, C.cloth4, 0.10, 0.42, 0.90, 0.94);
+    // The bedding runs along the bed's LENGTH, because that is the way he lies
+    // on it. It used to band across the depth axis, which split the mattress
+    // front-to-back and read as the sheets being laid on sideways. Most of those
+    // bands were also thinner than one row of the top face and rendered as
+    // nothing at all.
+    fillTopBand(g, bc, C.cloth2, 0.03, 0.97, 0.04, 0.96);            // sheet
+    // Pillow placed under where the sleeping sprite's head actually lands
+    // (blitted at BED.x+8, head at its columns 5-15), not at a guessed fraction.
+    // Offset left by half the top face's shear. The pillow rides the sheared
+    // face; the sleeping sprite is a flat blit that does not shear, so matching
+    // them at the front edge leaves the pillow drifting right of his head at the
+    // back. Half the shear splits the difference across the depth.
+    fillTopBand(g, bc, C.pillow, 0.16, 0.60, 0.12, 0.88);
+    fillTopBand(g, bc, C.cloth4, 0.16, 0.60, 0.12, 0.32);
+    fillTopBand(g, bc, C.quilt,  0.64, 0.97, 0.06, 0.94);            // quilt, foot end
+    fillTopBand(g, bc, "#8a5866", 0.64, 0.68, 0.06, 0.94);           // turned edge
+    for (const u of [0.76, 0.87]) fillTopBand(g, bc, "#8a5866", u, u + 0.025, 0.06, 0.94);
   }
 
   function stoolBack(g) {
     const sc = drawBox(g, STOOL.x, STOOL.y + STOOL.h, STOOL.w, STOOL.d, STOOL.bh, MAT.chair);
     fillTopBand(g, sc, C.cloth2, 0.14, 0.86, 0.18, 0.82);
-  }
-
-  // Seat and backrest behind him, arms back over his sides. The sub-boxes are
-  // drawn bare: each one outlining itself stacked dark edges into fat black
-  // seams where the arms met the seat, and the chair fell apart into slabs.
-  const ARM_W = 6, ARM_H = 15, BACK_H = 16;
-  function chairBack(g) {
-    drawBox(g, CHAIR.x + 3, CHAIR.y + CHAIR.h - CHAIR.bh + 2,
-            CHAIR.w - 6, 7, BACK_H, MAT.chair, {shadow: false, bare: true});
-    const ac = drawBox(g, CHAIR.x, CHAIR.y + CHAIR.h, CHAIR.w, CHAIR.d, CHAIR.bh, MAT.chair);
-    fillTopBand(g, ac, C.cloth2, ARM_W / CHAIR.w, 1 - ARM_W / CHAIR.w, 0.08, 0.80);
-  }
-  function chairFront(g) {
-    for (const ax of [CHAIR.x, CHAIR.x + CHAIR.w - ARM_W]) {
-      drawBox(g, ax, CHAIR.y + CHAIR.h, ARM_W, CHAIR.d, ARM_H, MAT.chair,
-              {shadow: false, bare: true});
-    }
   }
 
   function plantBack(g) {
@@ -739,11 +721,10 @@
   const PROPS = {
     bed:   {P: BED,   back: bedBack,   front: null},
     stool: {P: STOOL, back: stoolBack, front: null},
-    chair: {P: CHAIR, back: chairBack, front: chairFront},
     plant: {P: PLANT, back: plantBack, front: null},
   };
   // Which prop each settled activity puts him on.
-  const OCCUPIES = {sleep: "bed", type: "stool", read: "chair"};
+  const OCCUPIES = {sleep: "bed", type: "stool", read: "stool"};
 
   function lightPools(b) {
     // Soft overhead throw, not hard ellipses. The previous version banded badly:
@@ -1329,7 +1310,7 @@
   // with their legs cropped off and their bottom row on y, so y IS the seat.
   const seatOn = (P, k) => topPoint(P, 0.5, k / (Math.round(P.d * DEPTH_RISE) - 1));
   const DESK_SEAT = seatOn(STOOL, 1);
-  const READ_SPOT = seatOn(CHAIR, 1);
+  const READ_SPOT = seatOn(STOOL, 1);   // same seat; only the pose differs
   const COOK_SPOT = {x: KITCHEN.x + 20, y: KITCHEN.y + KITCHEN.h + 18};  // stands
   let unacked = 0, tl = null, walking = false;
   // A rack burns while it has an unacked escalation -- which is what "that
@@ -1492,7 +1473,7 @@
     // cannot silently retag the wrong piece.
     const PIECES = [
       [FRIDGE, false], [KITCHEN, false], [SHELF, false], [BED, true],
-      [TVST, false], [DESK, true], [STOOL, true], [CHAIR, true], [PLANT, false],
+      [TVST, false], [STOOL, true], [PLANT, false],
     ];
     SOLIDS = PIECES.map(([P, occ]) => {
       const f = footprintOf(P);
@@ -1907,7 +1888,7 @@
   // surface. Gravity applies to mugs.
   function knockables() {
     return [
-      {x: topPoint(DESK, 0.86, 0.25).x, y: DESK.y + DESK.h + 7, what: "mug"},
+      {x: topPoint(TVST, 0.80, 0.25).x, y: TVST.y + TVST.h + 7, what: "mug"},
       {x: PLANT.x - 8, y: PLANT.y + PLANT.h - 2, what: "plant"},
     ];
   }
