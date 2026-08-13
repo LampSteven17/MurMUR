@@ -232,11 +232,14 @@
   const SLEEP_HEAD = [
     "..oooo....",
     ".oAAAAo...",
-    ".oASSAo...",
-    ".oSmmSo...",
-    ".oSSSSo...",
+    ".oAAAAAo..",
+    ".oASSSAo..",
+    ".oSmSmSo..",
+    ".oSSSSSo..",
     "..oooo....",
   ];
+
+
 
 
 
@@ -453,7 +456,11 @@
   // A tall piece now correctly rises UP the wall in view, which is what a tall
   // thing standing against a wall does.
   const WALL_Y = WALL_H + 2;
-  const WINDOW = {x:43, y:10, w:88, h:44};
+  // Narrow enough that the drapes clear the fridge on one side and the shelf on
+  // the other. The panels hang 7px outside the frame and 16px wide, so the
+  // window plus its dressing has to fit between them -- it did not, and both
+  // pieces had a curtain lying across their top corner.
+  const WINDOW = {x:46, y:10, w:80, h:44};
   const backBase = (h, d) => WALL_Y + Math.round(d * DEPTH_RISE);
   const piece = (x, w, d, h, base) =>
     ({x, w, d, bh: h, y: base - h - Math.round(d * DEPTH_RISE),
@@ -473,10 +480,13 @@
       y: (P.y + P.h) - P.bh - 1 - i,
     };
   };
-  const FRIDGE  = piece(10,  20, 16, 30, backBase(30, 16));
+  // Turned to face into the room: the door is the RIGHT SIDE face, like the
+  // telly. A fridge door is taller than it is wide, so it is the one shape that
+  // suits a side face without needing any extra depth.
+  const FRIDGE  = piece(10,  12, 24, 30, backBase(30, 24));
   // Deeper than it looks. The top face is a quarter of the depth in isometric,
   // and the hobs and sink have to fit on it.
-  const KITCHEN = piece(61,  52, 32, 15, backBase(15, 32));
+  const KITCHEN = piece(60,  52, 32, 15, backBase(15, 32));
   const SHELF   = piece(134, 20, 12, 30, backBase(30, 12));   // flush to the side wall
   // Deeper than it looks: the top face is only a quarter of the depth now, and
   // the sleeping sprite has to fit inside it.
@@ -486,8 +496,12 @@
   // went isometric -- at the old ratio this screen would have been 11px wide.
   const TVST    = piece(12,  10, 48, 10, 200);
   const TV      = piece(14,   8, 44, 16, TVST.y + TVST.h - TVST.bh - 2);
-  const STOOL   = piece(60,  22, 16, 10, 210);   // to the right, facing the screen
+  // Level with the screen rather than in front of it. It sat 18px forward of
+  // the telly's footprint, so he was watching it over his shoulder.
+  const STOOL   = piece(56,  22, 16, 10, 192);
   const PLANT   = piece(138, 14, 12, 11, 268);
+  // The cat's own bed, so she has somewhere of her own to sleep.
+  const CATBED  = piece(95,  22, 16,  4, 258);
   const DOOR = {y0:238, y1:280};
   const RACK_W = 28, RACK_H = 48, TOP_H = 9, RACK_D = 16;
   const ROW_A_Y = 156, ROW_B_Y = 252;
@@ -657,15 +671,18 @@
     const faceTop = (P) => P.y + P.h - P.bh;      // top of a piece's FRONT face
 
     // --- back wall ---------------------------------------------------------
-    box(FRIDGE, MAT.steel);
-    const fT = faceTop(FRIDGE);
-    b.fillStyle = C.stl1; b.fillRect(FRIDGE.x + 2, fT + 11, FRIDGE.w - 4, 1);
-    b.fillStyle = C.handle;
-    b.fillRect(FRIDGE.x + FRIDGE.w - 5, fT + 5, 1, 5);
-    b.fillRect(FRIDGE.x + FRIDGE.w - 5, fT + 14, 1, 12);
-    b.fillStyle = C.bad; b.fillRect(FRIDGE.x + 4, fT + 4, 2, 1);
-    b.fillStyle = C.on;  b.fillRect(FRIDGE.x + 8, fT + 4, 2, 1);
-    b.fillStyle = C.wood5; b.fillRect(FRIDGE.x + 5, fT + 16, 6, 4);
+    const fc = box(FRIDGE, MAT.steel);
+    // Door furniture on the RIGHT SIDE face, because that is the face pointing
+    // into the room now. Drawn in that face's own coordinates so it leans with
+    // the door rather than sitting flat across it.
+    fillSideBand(b, fc, C.stl3, 0.10, 0.90, 0.66, 0.94);      // upper door
+    fillSideBand(b, fc, C.stl3, 0.10, 0.90, 0.08, 0.56);      // lower door
+    fillSideBand(b, fc, C.stl1, 0.06, 0.94, 0.58, 0.63);      // the split
+    fillSideBand(b, fc, C.handle, 0.74, 0.84, 0.68, 0.90);    // handles
+    fillSideBand(b, fc, C.handle, 0.74, 0.84, 0.14, 0.44);
+    fillSideBand(b, fc, C.wood5, 0.22, 0.48, 0.24, 0.40);     // a magnet
+    fillSideBand(b, fc, C.bad, 0.20, 0.30, 0.86, 0.92);
+    fillSideBand(b, fc, C.on,  0.38, 0.48, 0.86, 0.92);
 
     const kDy = Math.round(KITCHEN.d * DEPTH_RISE);
     const kDx = Math.round(KITCHEN.d * DEPTH_SHEAR);
@@ -773,16 +790,23 @@
     // The pillow sits where his head lands (drawSleeping puts it at u 0.10) and
     // is pillow-sized. It used to span nearly half the mattress, which read as a
     // sheet of white rather than as something to lie on.
-    fillTopBand(g, bc, C.pillow, 0.03, 0.30, 0.14, 0.86);
-    fillTopBand(g, bc, C.cloth4, 0.03, 0.30, 0.14, 0.34);
-    fillTopBand(g, bc, C.quilt,  0.40, 0.97, 0.06, 0.94);            // quilt, foot end
-    fillTopBand(g, bc, "#8a5866", 0.40, 0.44, 0.06, 0.94);           // turned edge
-    for (const u of [0.58, 0.76]) fillTopBand(g, bc, "#8a5866", u, u + 0.025, 0.06, 0.94);
+    fillTopBand(g, bc, C.pillow, 0.03, 0.42, 0.14, 0.86);
+    fillTopBand(g, bc, C.cloth4, 0.03, 0.42, 0.14, 0.34);
+    fillTopBand(g, bc, C.quilt,  0.46, 0.97, 0.06, 0.94);            // quilt, foot end
+    fillTopBand(g, bc, "#8a5866", 0.46, 0.50, 0.06, 0.94);           // turned edge
+    for (const u of [0.64, 0.80]) fillTopBand(g, bc, "#8a5866", u, u + 0.025, 0.06, 0.94);
   }
 
   function stoolBack(g) {
     const sc = drawBox(g, STOOL.x, STOOL.y + STOOL.h, STOOL.w, STOOL.d, STOOL.bh, MAT.chair);
     fillTopBand(g, sc, C.cloth2, 0.14, 0.86, 0.18, 0.82);
+  }
+
+  function catBedBack(g) {
+    const c = drawBox(g, CATBED.x, CATBED.y + CATBED.h, CATBED.w, CATBED.d,
+                      CATBED.bh, MAT.chair);
+    fillTopBand(g, c, C.cloth2, 0.12, 0.88, 0.18, 0.82);   // cushion
+    fillTopBand(g, c, C.cloth3, 0.12, 0.88, 0.18, 0.34);   // lit edge of it
   }
 
   function plantBack(g) {
@@ -803,6 +827,7 @@
     bed:   {P: BED,   back: bedBack,   front: null},
     stool: {P: STOOL, back: stoolBack, front: null},
     plant: {P: PLANT, back: plantBack, front: null},
+    catbed: {P: CATBED, back: catBedBack, front: null},
   };
   // Which prop each settled activity puts him on.
   const OCCUPIES = {sleep: "bed", type: "stool", read: "stool"};
@@ -1602,6 +1627,8 @@
       [FRIDGE, false], [KITCHEN, false], [SHELF, false], [BED, true],
       [TVST, false], [STOOL, true], [PLANT, false],
     ];
+    // CATBED is deliberately absent: it is four pixels tall and she sleeps ON
+    // it, so making it solid would only stop her reaching her own bed.
     SOLIDS = PIECES.map(([P, occ]) => {
       const f = footprintOf(P);
       f.occupiable = occ;
@@ -1897,14 +1924,21 @@
   // of sliding a picture up and down.
   function drawSleeping(g, now) {
     const rise = Math.floor(now / 2400) % 2 ? 1 : 0;
-    const body = topPoint(BED, 0.30, 0.22);
-    // bare: the mound is part of the bed, not a crate sitting on it -- its own
-    // hard silhouette made it read as a separate object.
-    drawBox(g, body.x, body.y, 30, 18, 5 + rise, MAT.quilt, {shadow: false, bare: true});
-    const head = topPoint(BED, 0.10, 0.42);
-    blit(SLEEP_HEAD, head.x, head.y - 9, false);
+    // The mound starts clear of the pillow and is sized to sit inside the
+    // mattress. bare: it is part of the bed, not a crate on top of it.
+    const body = topPoint(BED, 0.44, 0.25);
+    drawBox(g, body.x, body.y, 26, 18, 5 + rise, MAT.quilt, {shadow: false, bare: true});
+    // Head centred ON the pillow, which is at u 0.03-0.30. It used to be at
+    // u 0.10 with the sprite's top-left corner placed there, so it sat up and
+    // left of the pillow and overhung the frame instead of resting on anything.
+    // Placed so all seven rows land inside the mattress. The top face is only
+    // nine rows deep and it shears two pixels per row, so a head hung six rows
+    // above its anchor point ends up off the back of the bed and left of the
+    // surface -- which is exactly where it was.
+    const head = topPoint(BED, 0.17, 0.5);
+    blit(SLEEP_HEAD, head.x, head.y - 3, false);
     if (Math.floor(now / 1400) % 2) {
-      drawText(g, "z", head.x + 9, head.y - 14, C.dim);
+      drawText(g, "z", head.x + 11, head.y - 9, C.dim);
     }
   }
 
@@ -2090,7 +2124,8 @@
       catGo(ball.x, ball.y);
       cat.until = now + 9000 + Math.random() * 6000;
     } else if (state === "nap") {
-      catGo(BED.x + 30 + Math.random() * 90, 250 + Math.random() * 20);
+      const n = topPoint(CATBED, 0.5, 0.5);
+      catGo(n.x, n.y + 3);
       cat.until = now + 20000 + Math.random() * 25000;
     } else if (state === "sit" || state === "groom") {
       cat.until = now + 5000 + Math.random() * 7000;
@@ -2274,7 +2309,8 @@
     }
   }
 
-  function drawCat(now) {
+  function drawCat(now, onCushion) {
+    const lift = onCushion ? 1 : 0;          // nestled into the cushion, not perched on it
     const surf = cat.standingOn ? cat.standingOn.zTop : 0;
     const air = Math.max(0, cat.z - surf);
     // The shadow sits on whatever is UNDER her, not on the floor, and shrinks
@@ -2286,7 +2322,7 @@
     ctx.fillRect(Math.round(cat.x) - (sw >> 1), sy - 1, sw, 2);
 
     // Draw at (x, y - z): only the sprite moves up, the floor position does not.
-    const x = Math.round(cat.x) - 7, y = Math.round(cat.y) - 8 - Math.round(cat.z);
+    const x = Math.round(cat.x) - 7, y = Math.round(cat.y) - 8 - Math.round(cat.z) - lift;
     if (cat.state === "nap" && Math.hypot(cat.tx - cat.x, cat.ty - cat.y) < 3) {
       // A twitch every few seconds, and a proper stretch on the way out of it.
       const left = cat.until - now;
@@ -2525,8 +2561,15 @@
     // Standing on a rack her floor y is behind the rack's own baseline, so the
     // rack would draw after her and hide her. Riders inherit their platform's
     // sort key -- the standard 2.5D rule.
-    items.push({sortY: cat.standingOn ? cat.standingOn.y1 + 0.5 : cat.y,
-                sortX: cat.x, cat: true});
+    // Curled in her own bed she is INSIDE its footprint, so on a plain baseline
+    // sort the bed draws after her and hides everything but her ears. A rider
+    // takes its platform's key -- the same rule the racks already use.
+    const inCatBed = cat.z === 0 &&
+      cat.x > CATBED.x - 2 && cat.x < CATBED.x + CATBED.w + 10 &&
+      cat.y > CATBED.y + CATBED.h - 8 && cat.y <= CATBED.y + CATBED.h + 3;
+    items.push({sortY: cat.standingOn ? cat.standingOn.y1 + 0.5
+                     : inCatBed ? CATBED.y + CATBED.h + 0.5 : cat.y,
+                sortX: cat.x, cat: true, inCatBed});
     items.push({sortY: ball.y, sortX: ball.x, ball: true});
     if (mess) items.push({sortY: mess.y, sortX: mess.x, spill: true});
 
@@ -2538,7 +2581,7 @@
     items.sort((a, b) => (a.sortY - b.sortY) || (a.sortX - b.sortX));
 
     for (const it of items) {
-      if (it.cat)   { drawCat(now);  continue; }
+      if (it.cat)   { drawCat(now, it.inCatBed); continue; }
       if (it.ball)  { drawBall();    continue; }
       if (it.spill) { drawMess(now); continue; }
       if (it.prop && !it.fred) {          // unoccupied: the halves just meet up
