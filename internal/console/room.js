@@ -221,15 +221,21 @@
            ".zbbz.....zbbz....",".zbbz.....zbbz....","..................",],
   };
 
+  // 34x8, redrawn for the isometric bed. The old one was 30x14 and the bed's
+  // top face is only 9 rows deep now -- a quarter of the depth rather than a
+  // half -- so it simply did not fit on the mattress any more.
   const SLEEP = [
-    "........AAAAAA................","......AAAAAAAAAA..............",
-    ".....GAASSSSSSAo..............",".....GASSSSSSSSo..............",
-    ".....GASmmSSmmSo..............",".....GASSSSSSSSo..............",
-    "......ASSSSSSo................","......QQQQQQQQQQQQQQQQQQQQ....",
-    ".....QQQQQQQQQQQQQQQQQQQQQQ...",".....QQQQQQQQQQQQQQQQQQQQQQ...",
-    ".....qQQQQQQQQQQQQQQQQQQQQq...",".....qqQQQQQQQQQQQQQQQQQQqq...",
-    "......qqqqqqqqqqqqqqqqqqqq....","..............................",
+    "...ooooo..........................",
+    "..oAAAAAo.........................",
+    "..oASSSAo.........................",
+    "..oSmSmSo.........................",
+    "..oSSSSSooQQQQQQQQQQQQQQQQQQQQo...",
+    "...ooooooQQQQQQQQQQQQQQQQQQQQQo...",
+    ".........oqqqqqqqqqqqqqqqqqqqqo...",
+    ".........oooooooooooooooooooooo...",
   ];
+
+
 
   const PX = {
     h:C.hair2, H:C.hair1, t:C.hair3,
@@ -270,7 +276,16 @@
   //   That is a 2:1 staircase (run lengths 2,2,2,... -- the cleanest diagonal),
   //   a 63.43deg depth axis, and a 0.56 depth scale, which is textbook cabinet.
   //   Height stays at scale 1.0, so every front face already drawn still fits.
-  const DEPTH_RISE = 0.5, DEPTH_SHEAR = 0.25, LEAN = 1;   // +1: right side shows
+  // 2:1 isometric: the depth axis runs 2px across for every 1px up, which is
+  // the standard pixel-isometric ratio. It was the inverse of this -- 1 across
+  // per 2 up -- which is cabinet oblique, and it compressed every side face to a
+  // quarter of its depth. That is why nothing could be turned to face sideways:
+  // a screen on a side face came out a quarter as wide as it should be.
+  //
+  // Consequence to hold in mind everywhere below: side faces DOUBLE in width and
+  // top faces HALVE in depth. Anything that sat on a top face has half the room
+  // it used to, and the shear across that face is twice as steep.
+  const DEPTH_RISE = 0.25, DEPTH_SHEAR = 0.5, LEAN = 1;   // +1: right side shows
 
   // Light is upper-left, so the visible (right) side is the shadow side and the
   // faces form a monotone ladder: edge > top > front > side.
@@ -434,27 +449,16 @@
       y: (P.y + P.h) - P.bh - 1 - i,
     };
   };
-  const FRIDGE  = piece(10,  20, 14, 30, backBase(30, 14));   // hard into the corner
-  const KITCHEN = piece(59,  56, 18, 15, backBase(15, 18));   // centred under the window
-  const SHELF   = piece(140, 20, 10, 30, backBase(30, 10));   // flush to the side wall
-  // The bed's long axis runs left-right because that is how Fred lies on it;
-  // its top face has to be wide enough for a 30px sprite and deep enough for 14
-  // rows of one, which is what sets w and d rather than any real bed's ratio.
-  const BED     = piece(12,  48, 30,  8, 264);   // longer, moved to the front
-  const TVST    = piece(12,  36, 16, 10, 190);   // against the left wall
-  const TV      = piece(20,  24,  8, 16, TVST.y + TVST.h - TVST.bh - 3);
-  // One seat and one screen. The desk PC and the armchair are gone -- he sits on
-  // this stool in front of the telly, and the telly is his terminal.
-  // Directly in FRONT of the telly, not beside it. In cabinet oblique the depth
-  // axis is compressed 4:1, so a box rotated to face right shows its screen on
-  // the side face at a quarter width -- a 36-deep telly gives a 9px screen that
-  // is taller than it is wide. There is no rotation that renders a watchable
-  // screen against a side wall; the only orientation this projection can show a
-  // screen in is facing the camera. So the telly stays square to the camera and
-  // he sits in front of it looking away from us, which is the arrangement that
-  // is actually correct rather than the one that merely looked wrong.
-  const STOOL   = piece(21,  22, 12, 10, 230);
-  const PLANT   = piece(142, 14, 10, 11, 268);
+  const FRIDGE  = piece(10,  20, 16, 30, backBase(30, 16));
+  const KITCHEN = piece(61,  52, 20, 15, backBase(15, 20));   // centred under the window
+  const SHELF   = piece(134, 20, 12, 30, backBase(30, 12));   // flush to the side wall
+  // Deeper than it looks: the top face is only a quarter of the depth now, and
+  // the sleeping sprite has to fit inside it.
+  const BED     = piece(12,  48, 36,  8, 264);
+  const TVST    = piece(12,  36, 20, 10, 190);
+  const TV      = piece(20,  24, 12, 16, TVST.y + TVST.h - TVST.bh - 2);
+  const STOOL   = piece(21,  22, 16, 10, 230);
+  const PLANT   = piece(138, 14, 12, 11, 268);
   const DOOR = {y0:238, y1:280};
   const RACK_W = 28, RACK_H = 48, TOP_H = 9, RACK_D = 16;
   const ROW_A_Y = 156, ROW_B_Y = 252;
@@ -1801,6 +1805,20 @@
   const FRED_HW = 6, FRED_FH = 5;
   const CAT_HW = 5, CAT_FH = 4;
 
+  // A flat sprite laid on a top face has to lean with the surface, or it drifts
+  // off the far side. The shear is twice as steep in isometric as it was in
+  // oblique, so this stopped being a rounding detail and became the difference
+  // between lying on the bed and hovering beside it. Row 0 is deepest, so it
+  // takes the largest offset.
+  function blitOnFace(rows, x, y, flip, P) {
+    const dy = Math.round(P.d * DEPTH_RISE), dx = Math.round(P.d * DEPTH_SHEAR);
+    const step = dy ? dx / dy : 0;
+    for (let r = 0; r < rows.length; r++) {
+      const off = Math.round((rows.length - 1 - r) * step);
+      blit([rows[r]], x + off, y + r, flip);
+    }
+  }
+
   // --- the cat ---------------------------------------------------------------
   // She has her own little state machine, deliberately separate from Fred's:
   // she is not reacting to cluster events, she is just living here. The one
@@ -2399,7 +2417,7 @@
       if (it.prop) it.prop.back(ctx);     // ... and the sandwich when he is on it
       if (fred.asleep) {
         const rise = Math.floor(now / 1000) % 2 ? -1 : 0;
-        blit(SLEEP, BED.x + 8, BED.y + 1 + rise, false);
+        blitOnFace(SLEEP, BED.x + 4, BED.y + 1 + rise, false, BED);
         if (it.prop && it.prop.front) it.prop.front(ctx);
         continue;
       }
