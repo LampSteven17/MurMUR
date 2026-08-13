@@ -474,7 +474,9 @@
     };
   };
   const FRIDGE  = piece(10,  20, 16, 30, backBase(30, 16));
-  const KITCHEN = piece(61,  52, 20, 15, backBase(15, 20));   // centred under the window
+  // Deeper than it looks. The top face is a quarter of the depth in isometric,
+  // and the hobs and sink have to fit on it.
+  const KITCHEN = piece(61,  52, 32, 15, backBase(15, 32));
   const SHELF   = piece(134, 20, 12, 30, backBase(30, 12));   // flush to the side wall
   // Deeper than it looks: the top face is only a quarter of the depth now, and
   // the sleeping sprite has to fit inside it.
@@ -671,14 +673,17 @@
 
     const kc = box(KITCHEN, MAT.unit);
     const kT = faceTop(KITCHEN);
-    for (const u of [0.07, 0.30]) {               // hobs, on the TOP face
-      fillTopBand(b, kc, C.ink,  u,        u + 0.17, 0.26, 0.78);
-      fillTopBand(b, kc, C.hob,  u + 0.02, u + 0.15, 0.34, 0.70);
-      fillTopBand(b, kc, C.stl3, u + 0.06, u + 0.11, 0.46, 0.60);
+    // Sized to leave worktop showing. Scaled straight from the old numbers these
+    // swallowed the whole surface: the top face is a quarter of the depth in
+    // isometric rather than a half, so a band that used to read as a hob now
+    // reads as the counter being dark.
+    for (const u of [0.08, 0.27]) {               // hobs, on the TOP face
+      fillTopBand(b, kc, C.ink,  u,        u + 0.14, 0.36, 0.66);
+      fillTopBand(b, kc, C.hob,  u + 0.02, u + 0.12, 0.42, 0.60);
     }
-    fillTopBand(b, kc, C.stl1, 0.56, 0.94, 0.22, 0.82);
-    fillTopBand(b, kc, C.stl4, 0.56, 0.94, 0.22, 0.28);
-    fillTopBand(b, kc, C.ink,  0.61, 0.89, 0.32, 0.74);
+    fillTopBand(b, kc, C.stl1, 0.58, 0.90, 0.32, 0.70);
+    fillTopBand(b, kc, C.stl4, 0.58, 0.90, 0.32, 0.38);
+    fillTopBand(b, kc, C.ink,  0.62, 0.86, 0.42, 0.64);
     const tapX = KITCHEN.x + kDx + Math.round(KITCHEN.w * 0.75);
     b.fillStyle = C.stl5;
     b.fillRect(tapX, kBack - 8, 1, 9);
@@ -765,11 +770,14 @@
     // face; the sleeping sprite is a flat blit that does not shear, so matching
     // them at the front edge leaves the pillow drifting right of his head at the
     // back. Half the shear splits the difference across the depth.
-    fillTopBand(g, bc, C.pillow, 0.16, 0.60, 0.12, 0.88);
-    fillTopBand(g, bc, C.cloth4, 0.16, 0.60, 0.12, 0.32);
-    fillTopBand(g, bc, C.quilt,  0.64, 0.97, 0.06, 0.94);            // quilt, foot end
-    fillTopBand(g, bc, "#8a5866", 0.64, 0.68, 0.06, 0.94);           // turned edge
-    for (const u of [0.76, 0.87]) fillTopBand(g, bc, "#8a5866", u, u + 0.025, 0.06, 0.94);
+    // The pillow sits where his head lands (drawSleeping puts it at u 0.10) and
+    // is pillow-sized. It used to span nearly half the mattress, which read as a
+    // sheet of white rather than as something to lie on.
+    fillTopBand(g, bc, C.pillow, 0.03, 0.30, 0.14, 0.86);
+    fillTopBand(g, bc, C.cloth4, 0.03, 0.30, 0.14, 0.34);
+    fillTopBand(g, bc, C.quilt,  0.40, 0.97, 0.06, 0.94);            // quilt, foot end
+    fillTopBand(g, bc, "#8a5866", 0.40, 0.44, 0.06, 0.94);           // turned edge
+    for (const u of [0.58, 0.76]) fillTopBand(g, bc, "#8a5866", u, u + 0.025, 0.06, 0.94);
   }
 
   function stoolBack(g) {
@@ -778,13 +786,17 @@
   }
 
   function plantBack(g) {
-    drawBox(g, PLANT.x, PLANT.y + PLANT.h, PLANT.w, PLANT.d, PLANT.bh, MAT.wood);
-    const py = PLANT.y + PLANT.h - PLANT.bh;
+    const pc = drawBox(g, PLANT.x, PLANT.y + PLANT.h, PLANT.w, PLANT.d, PLANT.bh, MAT.wood);
+    fillTopBand(g, pc, C.mess, 0.12, 0.88, 0.15, 0.85);        // soil
+    // Leaves grow from the soil on the TOP face. They used to be hung off the
+    // front face's top edge, which in isometric is several pixels below and left
+    // of the soil -- so the plant had its foliage floating beside the pot.
+    const soil = topPoint(PLANT, 0.5, 0.5);
     g.fillStyle = C.onDim;
-    for (const [dx, dy] of [[3,-5],[6,-10],[9,-7],[11,-3],[6,-3],[9,-11]])
-      g.fillRect(PLANT.x + dx, py + dy, 2, 2);
+    for (const [dx, dy] of [[-4,-2],[-1,-6],[2,-4],[4,-1],[-2,0],[1,-8]])
+      g.fillRect(soil.x + dx, soil.y + dy, 2, 2);
     g.fillStyle = C.on;
-    for (const [dx, dy] of [[6,-10],[9,-11]]) g.fillRect(PLANT.x + dx, py + dy, 2, 2);
+    for (const [dx, dy] of [[-1,-6],[1,-8]]) g.fillRect(soil.x + dx, soil.y + dy, 2, 2);
   }
 
   const PROPS = {
