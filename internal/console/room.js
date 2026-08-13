@@ -328,24 +328,6 @@
     }
   }
 
-  // A sub-rectangle of a box's RIGHT side face, in that face's own coordinates:
-  // u runs along the depth axis (0 at the near edge), v up the height. This is
-  // what lets something face sideways -- a screen, a door, a panel. It was
-  // pointless under the old projection, where the side face was a quarter of the
-  // depth and anything drawn on it came out a sliver.
-  function fillSideBand(g, c, colour, u0, u1, v0, v1) {
-    if (!c.dx) return;
-    g.fillStyle = colour;
-    const n = Math.abs(c.dx);
-    const j0 = Math.max(1, Math.round(u0 * n)), j1 = Math.min(n, Math.round(u1 * n));
-    const hh = Math.max(1, Math.round((v1 - v0) * c.h));
-    for (let j = j0; j <= j1; j++) {
-      const x = c.ox + c.w + (j - 1);
-      const floorY = c.oy - Math.round(c.dy * j / n);
-      g.fillRect(x, floorY - Math.round(v1 * c.h), 1, hh);
-    }
-  }
-
   function fillSideFace(g, c, colour) {
     if (!c.dx) return;
     g.fillStyle = colour;
@@ -480,10 +462,12 @@
       y: (P.y + P.h) - P.bh - 1 - i,
     };
   };
-  // Turned to face into the room: the door is the RIGHT SIDE face, like the
-  // telly. A fridge door is taller than it is wide, so it is the one shape that
-  // suits a side face without needing any extra depth.
-  const FRIDGE  = piece(10,  12, 24, 30, backBase(30, 24));
+  // Square to the camera and shaped to sit into the corner, rather than turned
+  // to face sideways. Rotating it put the door on a side face, and in isometric
+  // a side face leans by half its height across its width -- the door came out
+  // as a rhombus. Nothing with a flat front survives being turned in this
+  // projection; the fix is to fit the geometry to the wall, not to spin it.
+  const FRIDGE  = piece(10,  22, 14, 30, backBase(30, 14));
   // Deeper than it looks. The top face is a quarter of the depth in isometric,
   // and the hobs and sink have to fit on it.
   const KITCHEN = piece(60,  52, 32, 15, backBase(15, 32));
@@ -494,11 +478,12 @@
   // Turned side-on: the long axis runs into the screen now, so the telly's face
   // is its RIGHT side rather than its front. Only possible since the projection
   // went isometric -- at the old ratio this screen would have been 11px wide.
-  const TVST    = piece(12,  10, 48, 10, 200);
-  const TV      = piece(14,   8, 44, 16, TVST.y + TVST.h - TVST.bh - 2);
-  // Level with the screen rather than in front of it. It sat 18px forward of
-  // the telly's footprint, so he was watching it over his shoulder.
-  const STOOL   = piece(56,  22, 16, 10, 192);
+  const TVST    = piece(12,  36, 18, 10, 190);
+  // Screen square to the camera. Turned side-on it was a 22-wide face leaning
+  // 11 up over a 16 height, which is geometrically right and reads as warped.
+  const TV      = piece(18,  28, 14, 16, TVST.y + TVST.h - TVST.bh - 2);
+  // In front of the screen, facing away from us at it.
+  const STOOL   = piece(21,  22, 16, 10, 228);
   const PLANT   = piece(138, 14, 12, 11, 268);
   // The cat's own bed, so she has somewhere of her own to sleep.
   const CATBED  = piece(95,  22, 16,  4, 258);
@@ -671,18 +656,15 @@
     const faceTop = (P) => P.y + P.h - P.bh;      // top of a piece's FRONT face
 
     // --- back wall ---------------------------------------------------------
-    const fc = box(FRIDGE, MAT.steel);
-    // Door furniture on the RIGHT SIDE face, because that is the face pointing
-    // into the room now. Drawn in that face's own coordinates so it leans with
-    // the door rather than sitting flat across it.
-    fillSideBand(b, fc, C.stl3, 0.10, 0.90, 0.66, 0.94);      // upper door
-    fillSideBand(b, fc, C.stl3, 0.10, 0.90, 0.08, 0.56);      // lower door
-    fillSideBand(b, fc, C.stl1, 0.06, 0.94, 0.58, 0.63);      // the split
-    fillSideBand(b, fc, C.handle, 0.74, 0.84, 0.68, 0.90);    // handles
-    fillSideBand(b, fc, C.handle, 0.74, 0.84, 0.14, 0.44);
-    fillSideBand(b, fc, C.wood5, 0.22, 0.48, 0.24, 0.40);     // a magnet
-    fillSideBand(b, fc, C.bad, 0.20, 0.30, 0.86, 0.92);
-    fillSideBand(b, fc, C.on,  0.38, 0.48, 0.86, 0.92);
+    box(FRIDGE, MAT.steel);
+    const fT = faceTop(FRIDGE);
+    b.fillStyle = C.stl1; b.fillRect(FRIDGE.x + 2, fT + 12, FRIDGE.w - 4, 1);   // split
+    b.fillStyle = C.handle;
+    b.fillRect(FRIDGE.x + FRIDGE.w - 5, fT + 6, 1, 5);
+    b.fillRect(FRIDGE.x + FRIDGE.w - 5, fT + 15, 1, 11);
+    b.fillStyle = C.bad; b.fillRect(FRIDGE.x + 4, fT + 4, 2, 1);
+    b.fillStyle = C.on;  b.fillRect(FRIDGE.x + 8, fT + 4, 2, 1);
+    b.fillStyle = C.wood5; b.fillRect(FRIDGE.x + 5, fT + 17, 6, 5);
 
     const kDy = Math.round(KITCHEN.d * DEPTH_RISE);
     const kDx = Math.round(KITCHEN.d * DEPTH_SHEAR);
@@ -750,12 +732,11 @@
       b.fillStyle = C.wood2; b.fillRect(vx, vT + 2, pw, TVST.bh - 5);
       b.fillStyle = C.wood5; b.fillRect(vx, vT + 2, pw, 1);
     }
-    const tc = box(TV, MAT.steel);
-    // The screen is the RIGHT SIDE face, not the front -- the telly is turned to
-    // face across the room. Everything on it is drawn in that face's own
-    // coordinates so it leans with the glass.
-    fillSideBand(b, tc, C.ink, 0.04, 0.96, 0.10, 0.92);
-    TERMINAL = tc;
+    box(TV, MAT.steel);
+    const tT = faceTop(TV);
+    b.fillStyle = C.ink; b.fillRect(TV.x + 2, tT + 2, TV.w - 4, TV.bh - 6);
+    b.fillStyle = C.on;  b.fillRect(TV.x + TV.w - 4, tT + TV.bh - 3, 1, 1);
+    TERMINAL = {x: TV.x + 3, y: tT + 3, w: TV.w - 6, h: TV.bh - 8};
 
   }
 
@@ -1926,8 +1907,13 @@
     const rise = Math.floor(now / 2400) % 2 ? 1 : 0;
     // The mound starts clear of the pillow and is sized to sit inside the
     // mattress. bare: it is part of the bed, not a crate on top of it.
-    const body = topPoint(BED, 0.44, 0.25);
-    drawBox(g, body.x, body.y, 26, 18, 5 + rise, MAT.quilt, {shadow: false, bare: true});
+    // The quilt has to meet his shoulders. It used to be 26 wide by 18 deep,
+    // which stands 10px tall on screen once its own depth is counted -- five
+    // clear above the top of his head, and starting a gap to the right of it.
+    // A head with a lump beside it and nothing joining them reads as a head
+    // sitting on a bed, not as a person under a cover.
+    const body = topPoint(BED, 0.34, 0.15);
+    drawBox(g, body.x, body.y, 24, 12, 3 + rise, MAT.quilt, {shadow: false, bare: true});
     // Head centred ON the pillow, which is at u 0.03-0.30. It used to be at
     // u 0.10 with the sprite's top-left corner placed there, so it sat up and
     // left of the pillow and overhung the frame instead of resting on anything.
@@ -2698,22 +2684,20 @@
     if (TERMINAL) {
       const t = TERMINAL, busy = fred.activity === "type" && !walking;
       // Idling it just flickers; while he is working it scrolls lines, so the
-      // screen says the same thing his pose does from across the room. Drawn as
-      // bands on the side face so the lines lean with the glass rather than
-      // sitting flat on a surface that is not flat.
-      fillSideBand(ctx, t, (Math.floor(now / 140) % 5) === 0 ? "#3a5878" : "#2f4a6a",
-                   0.08, 0.92, 0.16, 0.86);
+      // screen says the same thing his pose does from across the room.
+      ctx.fillStyle = (Math.floor(now / 140) % 5) === 0 ? "#3a5878" : "#2f4a6a";
+      ctx.fillRect(t.x, t.y, t.w, t.h);
       if (busy) {
         for (let i = 0; i < 4; i++) {
-          const row = (i + Math.floor(now / 220)) % 5;
-          const v = 0.76 - row * 0.13;
-          const len = 0.10 + hash2(i * 13, Math.floor(now / 220)) * 0.62;
-          fillSideBand(ctx, t, i === 0 ? "#a8e6a0" : "#63c74d",
-                       0.13, 0.13 + len, v, v + 0.07);
+          const row = (i + Math.floor(now / 220)) % 4;
+          const len = 2 + Math.floor(hash2(i * 13, Math.floor(now / 220)) * (t.w - 4));
+          ctx.fillStyle = i === 0 ? "#a8e6a0" : "#63c74d";
+          ctx.fillRect(t.x + 1, t.y + 1 + row * 2, len, 1);
         }
       }
       ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = busy ? .22 : .12;
-      fillSideBand(ctx, t, busy ? "#63c74d" : "#4a7ab0", 0.02, 0.98, 0.06, 0.96);
+      ctx.fillStyle = busy ? "#63c74d" : "#4a7ab0";
+      ctx.fillRect(t.x - 3, t.y - 3, t.w + 6, t.h + 6);
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
     }
 
