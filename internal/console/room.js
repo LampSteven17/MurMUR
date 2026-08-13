@@ -229,32 +229,41 @@
   // under a quilt is a raised mound with a top and a front, and a decal has
   // neither. The mound is a box now (see drawSleeping) and this is what rests
   // on the pillow at the end of it.
-  // 40x12, one sprite: pillow, head, duvet and all. He used to be a head sprite
-  // composited with a procedurally drawn box for the covers, and no amount of
-  // moving those two things relative to each other was going to make them read
-  // as one person -- the head sat beside a lump with nothing joining them.
+  // 50x12, drawn against measurements taken off the actual sleepers in A Link to
+  // the Past, Link's Awakening and Omori. He was a head sprite composited with a
+  // procedural box for the covers, and no amount of moving those relative to
+  // each other was going to fuse them.
   //
-  // Drawn UNSHEARED. Only flat surfaces take the mattress's lean; a person has
-  // height, and shearing the whole figure squashed it into a diagonal smear.
-  // The bed underneath carries the perspective.
+  // The devices that do the joining, all of them cheap:
+  //   - the head OVERLAPS the quilt hem rather than sitting beside it, and its
+  //     own outline is deleted where the quilt crosses. Two closed shapes that
+  //     merely touch is exactly what reads as a head next to a lump.
+  //   - a 1px dark seam at the chin, with a lighter turned-down band beside it.
+  //   - a hand resting on the hem. Per the rips this is the single strongest
+  //     "one connected person" signal available, and it costs six pixels.
+  //   - a pale pillow halo behind the head, or it reads as decapitated.
   //
-  // The duvet's top edge follows shoulder, waist, hip, legs, feet. A straight
-  // top edge is what made it a plank. The two frames differ by one pixel over
-  // the chest, which is the breathing.
+  // The quilt spans the FULL mattress width -- a lump narrower than the bed
+  // floats -- and its top edge follows chest, waist, hip, legs, foot bump. Eyes
+  // are horizontal dashes sat a pixel low; dots read as open pupils.
+  //
+  // Drawn unsheared: only flat surfaces take the mattress lean. A body has
+  // height, and shearing the figure squashed it into a diagonal smear.
   const SLEEPER = {
     a: [
-      "........................................","........................................","....luuuuuuuul..........................",
-      "...lllAoooooAllgggg......gggggg.........","..llloAAAAAAAolQQQQggggggQQQQQQggggg....","..lllAAAAAAAAAlQQQQQQQQQQQQQQQQQQQQQgggg",
-      "..lllASmSSSmSAlQQQQQQQfQQQQQQQQfQQQQQQQQ","..lllASSSmSSSAlQQQQQQQQQQQQQQQQQQQQQQQQQ","...lllAAAAAAAllQQQQQQQQQQQQQQQQQQQQQQQQQ",
-      ".....loooooool.fffffffffffffffffffffffff","...............fffffffffffffffffffffffff","................fffffffffffffffffffffff.",
+      "..................................................","....luuuuuuuuuul..................................","..lllAoooooooAlll.................................",
+      ".llloAAAAAAAAAAllggg.......ggggggg........gggg....",".lloAAAAAAAAAAAllQQQgggggggQQQQQQQggggggggQQQQ....",".lloASSSSSSSSAAllQQfQQQQQQQQQQQQQQQQQQQQQQQQQQg...",
+      ".lloASmmSSmmSAAllQQfQQQQQQQQQQfQQQQQQQQQQQQQQQQg..",".llloASSSmSSSAAllQQfQQQQQQQQQQfQQQQQQQQQQQQQQQQQg.","..lllAAAAAAAAASSSoQQQQQQQQQQQQfQQQQQQQQQQQQQQQQQQ.",
+      "....lllllllfgllSoQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ.","...........ffffffffffffffffffffffffffffffffffffff.","..................................................",
     ],
     b: [
-      "........................................","........................................","....luuuuuuuul.gggg.....................",
-      "...lllAoooooAllQQQQ......gggggg.........","..llloAAAAAAAolQQQQggggggQQQQQQggggg....","..lllAAAAAAAAAlQQQQQQQQQQQQQQQQQQQQQgggg",
-      "..lllASmSSSmSAlQQQQQQQfQQQQQQQQfQQQQQQQQ","..lllASSSmSSSAlQQQQQQQQQQQQQQQQQQQQQQQQQ","...lllAAAAAAAllQQQQQQQQQQQQQQQQQQQQQQQQQ",
-      ".....loooooool.fffffffffffffffffffffffff","...............fffffffffffffffffffffffff","................fffffffffffffffffffffff.",
+      "..................................................","....luuuuuuuuuul..................................","..lllAoooooooAlllggg..............................",
+      ".llloAAAAAAAAAAllQQQ.......ggggggg........gggg....",".lloAAAAAAAAAAAllQQQgggggggQQQQQQQggggggggQQQQ....",".lloASSSSSSSSAAllQQfQQQQQQQQQQQQQQQQQQQQQQQQQQg...",
+      ".lloASmmSSmmSAAllQQfQQQQQQQQQQfQQQQQQQQQQQQQQQQg..",".llloASSSmSSSAAllQQfQQQQQQQQQQfQQQQQQQQQQQQQQQQQg.","..lllAAAAAAAAASSSoQQQQQQQQQQQQfQQQQQQQQQQQQQQQQQQ.",
+      "....lllllllfgllSoQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ.","...........ffffffffffffffffffffffffffffffffffffff.","..................................................",
     ],
   };
+
 
 
 
@@ -1925,9 +1934,9 @@
   // of sliding a picture up and down.
   function drawSleeping(g, now) {
     const frame = Math.floor(now / 2400) % 2 ? SLEEPER.b : SLEEPER.a;
-    blit(frame, BED.x + 12, BED.y - 4, false);
+    blit(frame, BED.x + 10, BED.y - 3, false);
     if (Math.floor(now / 1400) % 2) {
-      drawText(g, "z", BED.x + 24, BED.y - 12, C.dim);
+      drawText(g, "z", BED.x + 22, BED.y - 11, C.dim);
     }
   }
 
