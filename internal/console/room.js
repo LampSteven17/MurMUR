@@ -320,6 +320,24 @@
     }
   }
 
+  // A sub-rectangle of a box's RIGHT side face, in that face's own coordinates:
+  // u runs along the depth axis (0 at the near edge), v up the height. This is
+  // what lets something face sideways -- a screen, a door, a panel. It was
+  // pointless under the old projection, where the side face was a quarter of the
+  // depth and anything drawn on it came out a sliver.
+  function fillSideBand(g, c, colour, u0, u1, v0, v1) {
+    if (!c.dx) return;
+    g.fillStyle = colour;
+    const n = Math.abs(c.dx);
+    const j0 = Math.max(1, Math.round(u0 * n)), j1 = Math.min(n, Math.round(u1 * n));
+    const hh = Math.max(1, Math.round((v1 - v0) * c.h));
+    for (let j = j0; j <= j1; j++) {
+      const x = c.ox + c.w + (j - 1);
+      const floorY = c.oy - Math.round(c.dy * j / n);
+      g.fillRect(x, floorY - Math.round(v1 * c.h), 1, hh);
+    }
+  }
+
   function fillSideFace(g, c, colour) {
     if (!c.dx) return;
     g.fillStyle = colour;
@@ -455,9 +473,12 @@
   // Deeper than it looks: the top face is only a quarter of the depth now, and
   // the sleeping sprite has to fit inside it.
   const BED     = piece(12,  48, 36,  8, 264);
-  const TVST    = piece(12,  36, 20, 10, 190);
-  const TV      = piece(20,  24, 12, 16, TVST.y + TVST.h - TVST.bh - 2);
-  const STOOL   = piece(21,  22, 16, 10, 230);
+  // Turned side-on: the long axis runs into the screen now, so the telly's face
+  // is its RIGHT side rather than its front. Only possible since the projection
+  // went isometric -- at the old ratio this screen would have been 11px wide.
+  const TVST    = piece(12,  10, 48, 10, 200);
+  const TV      = piece(14,   8, 44, 16, TVST.y + TVST.h - TVST.bh - 2);
+  const STOOL   = piece(60,  22, 16, 10, 210);   // to the right, facing the screen
   const PLANT   = piece(138, 14, 12, 11, 268);
   const DOOR = {y0:238, y1:280};
   const RACK_W = 28, RACK_H = 48, TOP_H = 9, RACK_D = 16;
@@ -701,12 +722,12 @@
       b.fillStyle = C.wood2; b.fillRect(vx, vT + 2, pw, TVST.bh - 5);
       b.fillStyle = C.wood5; b.fillRect(vx, vT + 2, pw, 1);
     }
-    box(TV, MAT.steel);
-    const tT = faceTop(TV);
-    b.fillStyle = C.ink; b.fillRect(TV.x + 2, tT + 2, TV.w - 4, TV.bh - 6);
-    b.fillStyle = C.on; b.fillRect(TV.x + TV.w - 4, tT + TV.bh - 3, 1, 1);
-    // With the PC gone this screen is what he works at, so it is the terminal.
-    TERMINAL = {x: TV.x + 3, y: tT + 3, w: TV.w - 6, h: TV.bh - 8};
+    const tc = box(TV, MAT.steel);
+    // The screen is the RIGHT SIDE face, not the front -- the telly is turned to
+    // face across the room. Everything on it is drawn in that face's own
+    // coordinates so it leans with the glass.
+    fillSideBand(b, tc, C.ink, 0.04, 0.96, 0.10, 0.92);
+    TERMINAL = tc;
 
   }
 
@@ -2437,7 +2458,7 @@
       // arrival hands off to a pose that says what he is actually doing.
       if (!walking && fred.activity === "read") {
         blit(withBlink(SPR.side, "side", now).slice(0, 21),
-             fred.x - 9, fred.y - 21 + breath, false);
+             fred.x - 9, fred.y - 21 + breath, true);
         drawBook(fred.x - 9, fred.y + breath, now);
       } else if (!walking && fred.activity === "clean") {
         // Crouched over it, scrubbing. The cloth is the only moving part.
@@ -2461,11 +2482,11 @@
         // it. The stretch has its own profile frame for the same reason -- the
         // back-view one would have snapped him ninety degrees for two seconds.
         if (now % 26000 < 1700) {
-          blit(SPR.stretch.slice(0, 21), fred.x - 9, fred.y - 22 + breath, false);
+          blit(SPR.sideStretch.slice(0, 21), fred.x - 9, fred.y - 22 + breath, true);
         } else {
           const h = ["a", "b"][Math.floor(now / 150) % 2];
-          blit(withHands(SPR.up, h, "up").slice(0, 21),
-               fred.x - 9, fred.y - 21 + breath, false);
+          const rows = withHands(withBlink(SPR.side, "side", now), h, "side");
+          blit(rows.slice(0, 21), fred.x - 9, fred.y - 21 + breath, true);
         }
       } else if (!walking && fred.activity === "inspect") {
         // Checking a rack: he leans in and out, and one hand comes up to it.
@@ -2526,21 +2547,23 @@
     // the bunk terminal, always on
     if (TERMINAL) {
       const t = TERMINAL, busy = fred.activity === "type" && !walking;
-      // Idling it just flickers; while he is actually working it scrolls lines,
-      // so the screen tells you the same thing his pose does from across the room.
-      ctx.fillStyle = (Math.floor(now / 140) % 5) === 0 ? "#3a5878" : "#2f4a6a";
-      ctx.fillRect(t.x, t.y, t.w, t.h);
+      // Idling it just flickers; while he is working it scrolls lines, so the
+      // screen says the same thing his pose does from across the room. Drawn as
+      // bands on the side face so the lines lean with the glass rather than
+      // sitting flat on a surface that is not flat.
+      fillSideBand(ctx, t, (Math.floor(now / 140) % 5) === 0 ? "#3a5878" : "#2f4a6a",
+                   0.08, 0.92, 0.16, 0.86);
       if (busy) {
         for (let i = 0; i < 4; i++) {
           const row = (i + Math.floor(now / 220)) % 5;
-          const len = 2 + Math.floor(hash2(i * 13, Math.floor(now / 220)) * (t.w - 4));
-          ctx.fillStyle = i === 0 ? "#a8e6a0" : "#63c74d";
-          ctx.fillRect(t.x + 1, t.y + 1 + row, len, 1);
+          const v = 0.76 - row * 0.13;
+          const len = 0.10 + hash2(i * 13, Math.floor(now / 220)) * 0.62;
+          fillSideBand(ctx, t, i === 0 ? "#a8e6a0" : "#63c74d",
+                       0.13, 0.13 + len, v, v + 0.07);
         }
       }
       ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = busy ? .22 : .12;
-      ctx.fillStyle = busy ? "#63c74d" : "#4a7ab0";
-      ctx.fillRect(t.x - 3, t.y - 3, t.w + 6, t.h + 6);
+      fillSideBand(ctx, t, busy ? "#63c74d" : "#4a7ab0", 0.02, 0.98, 0.06, 0.96);
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
     }
 
