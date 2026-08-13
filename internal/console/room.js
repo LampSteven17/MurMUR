@@ -846,9 +846,8 @@
     const plateY = top + 3;
     ctx.fillStyle = C.stl1; ctx.fillRect(x + 4, plateY, RACK_W - 8, 7);
     ctx.fillStyle = C.stl2; ctx.fillRect(x + 4, plateY, RACK_W - 8, 1);
-    ctx.fillStyle = burning.has(r.node) ? C.fMid : C.stl6;
-    ctx.font = "6px ui-monospace, monospace"; ctx.textAlign = "center";
-    ctx.fillText(r.node.replace("prxy-", ""), x + RACK_W / 2, plateY + 6);
+    drawText(ctx, r.node.replace("prxy-", ""), x + RACK_W / 2, plateY + 1,
+             burning.has(r.node) ? C.fMid : C.stl6, "centre");
     ctx.textAlign = "left";
 
     for (let u = 0; u < 5; u++) {
@@ -872,6 +871,54 @@
   }
 
   // --- wall fittings ----------------------------------------------------------
+  // A 3x5 pixel font. Rack labels were drawn with fillText, which hands them to
+  // the browser's font rasteriser -- it anti-aliases, so the node names came out
+  // as grey fringed smudges sitting on top of art where every other pixel is
+  // exactly one colour. At five pixels tall there is no room for a soft edge.
+  // Uppercase forms are used for the lowercase letters, which is what tiny
+  // fonts do: at this size b/d/p/q only stay apart if the strokes are full.
+  const FONT = {
+    a:[".#.","#.#","###","#.#","#.#"], b:["##.","#.#","##.","#.#","##."],
+    c:[".##","#..","#..","#..",".##"], d:["##.","#.#","#.#","#.#","##."],
+    e:["###","#..","##.","#..","###"], f:["###","#..","##.","#..","#.."],
+    g:[".##","#..","#.#","#.#",".##"], h:["#.#","#.#","###","#.#","#.#"],
+    i:["###",".#.",".#.",".#.","###"], j:["..#","..#","..#","#.#",".#."],
+    k:["#.#","#.#","##.","#.#","#.#"], l:["#..","#..","#..","#..","###"],
+    m:["#.#","###","###","#.#","#.#"], n:["##.","#.#","#.#","#.#","#.#"],
+    o:[".#.","#.#","#.#","#.#",".#."], p:["##.","#.#","##.","#..","#.."],
+    q:[".#.","#.#","#.#",".#.","..#"], r:["##.","#.#","##.","#.#","#.#"],
+    s:[".##","#..",".#.","..#","##."], t:["###",".#.",".#.",".#.",".#."],
+    u:["#.#","#.#","#.#","#.#",".##"], v:["#.#","#.#","#.#",".#.",".#."],
+    w:["#.#","#.#","###","###","#.#"], x:["#.#","#.#",".#.","#.#","#.#"],
+    y:["#.#","#.#",".##","..#",".#."], z:["###","..#",".#.","#..","###"],
+    "0":["###","#.#","#.#","#.#","###"], "1":[".#.","##.",".#.",".#.","###"],
+    "2":["###","..#","###","#..","###"], "3":["###","..#","###","..#","###"],
+    "4":["#.#","#.#","###","..#","..#"], "5":["###","#..","###","..#","###"],
+    "6":["###","#..","###","#.#","###"], "7":["###","..#","..#","..#","..#"],
+    "8":["###","#.#","###","#.#","###"], "9":["###","#.#","###","..#","###"],
+    "-":["...","...","###","...","..."], ".":["...","...","...","...",".#."],
+    "?":["##.","..#",".#.","...",".#."], "!":[".#.",".#.",".#.","...",".#."],
+    ":":["...",".#.","...",".#.","..."], " ":["...","...","...","...","..."],
+  };
+  const FONT_ADV = 4;
+  const textWidth = t => t.length * FONT_ADV - 1;
+
+  // align: "left" (default) or "centre" -- x is the centre then.
+  function drawText(g, text, x, y, colour, align) {
+    const t = String(text).toLowerCase();
+    let cx = align === "centre" ? Math.round(x - textWidth(t) / 2) : Math.round(x);
+    g.fillStyle = colour;
+    for (const ch of t) {
+      const gl = FONT[ch];
+      if (gl) {
+        for (let r = 0; r < 5; r++)
+          for (let c = 0; c < 3; c++)
+            if (gl[r][c] === "#") g.fillRect(cx + c, y + r, 1, 1);
+      }
+      cx += FONT_ADV;
+    }
+  }
+
   const DIGIT = {
     "0":["###","#.#","#.#","#.#","###"], "1":["..#","..#","..#","..#","..#"],
     "2":["###","..#","###","#..","###"], "3":["###","..#","###","..#","###"],
@@ -1359,8 +1406,7 @@
     drapes();
 
     if (weather && weather.stale) {
-      ctx.fillStyle = C.dim; ctx.font = "5px ui-monospace, monospace"; ctx.textAlign = "left";
-      ctx.fillText("?", WINDOW.x + WINDOW.w + 5, WINDOW.y + 7);
+      drawText(ctx, "?", WINDOW.x + WINDOW.w + 5, WINDOW.y + 3, C.dim);
     }
   }
 
@@ -1846,8 +1892,7 @@
     const head = topPoint(BED, 0.10, 0.42);
     blit(SLEEP_HEAD, head.x, head.y - 9, false);
     if (Math.floor(now / 1400) % 2) {
-      g.fillStyle = C.dim; g.font = "5px ui-monospace, monospace"; g.textAlign = "left";
-      g.fillText("z", head.x + 9, head.y - 10);
+      drawText(g, "z", head.x + 9, head.y - 14, C.dim);
     }
   }
 
@@ -2237,8 +2282,7 @@
                   : (Math.floor(now / 2300) % 4 === 0 ? CAT.curlB : CAT.curl);
       blit(frame, x, y, cat.dir < 0);
       if (Math.floor(now / 1100) % 2) {
-        ctx.fillStyle = C.dim; ctx.font = "5px ui-monospace, monospace";
-        ctx.textAlign = "left"; ctx.fillText("z", x + 13, y - 1);
+        drawText(ctx, "z", x + 13, y - 5, C.dim);
       }
       return;
     }
@@ -2594,10 +2638,6 @@
       ctx.globalCompositeOperation = "source-over";
     }
 
-    if (fred.asleep && fred.activity === "sleep" && Math.floor(now / 900) % 2) {
-      ctx.fillStyle = C.dim; ctx.font = "6px ui-monospace, monospace"; ctx.textAlign = "left";
-      ctx.fillText("z", BED.x + BED.w + 3, BED.y + 12);
-    }
 
     // the bunk terminal, always on
     if (TERMINAL) {
@@ -2633,12 +2673,14 @@
     // Dialogue lives on the back wall, never over the hardware: a floating
     // bubble at this scale covers a rack whenever he stops at one.
     if (fred.say && now < fred.sayUntil) {
-      ctx.font = "6px ui-monospace, monospace"; ctx.textAlign = "left";
-      const tw = Math.min(ctx.measureText(fred.say).width + 8, W - 62);
+      // Width measured from the pixel font, not measureText -- the two disagree
+      // and the box came out the wrong size for the glyphs inside it.
+      const say = String(fred.say).slice(0, 46);
+      const tw = Math.min(textWidth(say) + 8, W - 62);
       ctx.fillStyle = C.ink;      ctx.fillRect(5, 5, tw + 2, 13);
       ctx.fillStyle = C.rackFace; ctx.fillRect(6, 6, tw, 11);
       ctx.fillStyle = C.rackTop;  ctx.fillRect(6, 6, tw, 1);
-      ctx.fillStyle = C.txt;      ctx.fillText(fred.say, 10, 14, tw - 8);
+      drawText(ctx, say, 9, 9, C.txt);
       if (!fred.asleep) {   // a tick above his head ties the line to him
         ctx.fillStyle = C.txt;
         ctx.fillRect(Math.round(fred.x), Math.round(fred.y) - 22, 1, 3);
@@ -2646,9 +2688,9 @@
     }
 
     if (unacked > 0) {
-      ctx.fillStyle = C.bad; ctx.fillRect(W - 48, 5, 45, 11);
-      ctx.fillStyle = C.ink; ctx.font = "6px ui-monospace, monospace"; ctx.textAlign = "left";
-      ctx.fillText(unacked + " to ack", W - 45, 13);
+      const label = unacked + " to ack", bw = textWidth(label) + 6;
+      ctx.fillStyle = C.bad; ctx.fillRect(W - bw - 4, 5, bw, 11);
+      drawText(ctx, label, W - bw - 1, 8, C.ink);
     }
   }
 
