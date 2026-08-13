@@ -224,16 +224,21 @@
   // 34x8, redrawn for the isometric bed. The old one was 30x14 and the bed's
   // top face is only 9 rows deep now -- a quarter of the depth rather than a
   // half -- so it simply did not fit on the mattress any more.
-  const SLEEP = [
-    "...ooooo..........................",
-    "..oAAAAAo.........................",
-    "..oASSSAo.........................",
-    "..oSmSmSo.........................",
-    "..oSSSSSooQQQQQQQQQQQQQQQQQQQQo...",
-    "...ooooooQQQQQQQQQQQQQQQQQQQQQo...",
-    ".........oqqqqqqqqqqqqqqqqqqqqo...",
-    ".........oooooooooooooooooooooo...",
+  // Just the head. He used to be one flat 34x8 decal laid on the mattress,
+  // which is why he read as a sticker of a person rather than a person: a body
+  // under a quilt is a raised mound with a top and a front, and a decal has
+  // neither. The mound is a box now (see drawSleeping) and this is what rests
+  // on the pillow at the end of it.
+  const SLEEP_HEAD = [
+    "..oooo....",
+    ".oAAAAo...",
+    ".oASSAo...",
+    ".oSmmSo...",
+    ".oSSSSo...",
+    "..oooo....",
   ];
+
+
 
 
 
@@ -419,6 +424,7 @@
     unit:  {top:C.counterTop, front:C.counter, side:C.chairA, edge:C.counterLit, dark:C.ink},
     chair: {top:C.chairC, front:C.chairB, side:C.chairA, edge:C.cloth3, dark:C.ink},
     cloth: {top:C.cloth3, front:C.cloth2, side:C.cloth1, edge:C.cloth4, dark:C.ink},
+    quilt: {top:C.quilt, front:"#5a3540", side:"#4a2b34", edge:"#8a5866", dark:C.ink},
   };
 
   // --- room geometry -------------------------------------------------------
@@ -1826,17 +1832,22 @@
   const FRED_HW = 6, FRED_FH = 5;
   const CAT_HW = 5, CAT_FH = 4;
 
-  // A flat sprite laid on a top face has to lean with the surface, or it drifts
-  // off the far side. The shear is twice as steep in isometric as it was in
-  // oblique, so this stopped being a rounding detail and became the difference
-  // between lying on the bed and hovering beside it. Row 0 is deepest, so it
-  // takes the largest offset.
-  function blitOnFace(rows, x, y, flip, P) {
-    const dy = Math.round(P.d * DEPTH_RISE), dx = Math.round(P.d * DEPTH_SHEAR);
-    const step = dy ? dx / dy : 0;
-    for (let r = 0; r < rows.length; r++) {
-      const off = Math.round((rows.length - 1 - r) * step);
-      blit([rows[r]], x + off, y + r, flip);
+  // Asleep: a mound under the quilt with his head on the pillow. He used to be
+  // one flat decal laid on the mattress, which is why he read as a sticker of a
+  // person rather than a person -- a body under a quilt is a raised shape with a
+  // top and a front, and a decal has neither. Breathing lifts the mound instead
+  // of sliding a picture up and down.
+  function drawSleeping(g, now) {
+    const rise = Math.floor(now / 2400) % 2 ? 1 : 0;
+    const body = topPoint(BED, 0.30, 0.22);
+    // bare: the mound is part of the bed, not a crate sitting on it -- its own
+    // hard silhouette made it read as a separate object.
+    drawBox(g, body.x, body.y, 30, 18, 5 + rise, MAT.quilt, {shadow: false, bare: true});
+    const head = topPoint(BED, 0.10, 0.42);
+    blit(SLEEP_HEAD, head.x, head.y - 9, false);
+    if (Math.floor(now / 1400) % 2) {
+      g.fillStyle = C.dim; g.font = "5px ui-monospace, monospace"; g.textAlign = "left";
+      g.fillText("z", head.x + 9, head.y - 10);
     }
   }
 
@@ -1846,63 +1857,83 @@
   // place the two meet is the mess -- she puts something on the floor and he
   // has to come and deal with it, which is the whole joke.
   const CAT = {
-    // 14x9, facing right. Tail at the left, body in the middle, head clear of
-    // the body at the right -- the first pass overlapped head and body and she
-    // read as an orange loaf. Only the legs change between frames, which is all
-    // a cat this size needs to look like it is walking.
-    walkA: [
-      "..a.......a.a.","..a......aaaaa","..aa....aBByBa","...a...aBBBBBa",
-      "...aBBBBBBBBa.","..aBBBBBBBBBa.","..aeeeeeeeea..","...aa...aa....",
-      "...aa...aa....",
+    // 14x9. She had one view -- the profile -- and flipped it for left and
+    // right, which meant walking up or down the room she crabbed sideways with
+    // her face pointing at the wall. There are three views now, chosen from
+    // whichever movement axis dominates, and the profile walk went from two
+    // frames to four so the gait has passing positions instead of just contact
+    // ones.
+    //
+    // Profile, facing right. Only the legs change between frames.
+    side: [
+      ["..a.......a.a.","..a......aaaaa","..aa....aBByBa","...a...aBBBBBa",
+       "...aBBBBBBBBa.","..aBBBBBBBBBa.","..aeeeeeeeea..","...aa...aa....",
+       "...aa...aa...."],
+      ["..a.......a.a.","..a......aaaaa","..aa....aBByBa","...a...aBBBBBa",
+       "...aBBBBBBBBa.","..aBBBBBBBBBa.","..aeeeeeeeea..","..aa.....aa...",
+       "..aa.....aa..."],
+      ["..a.......a.a.","..a......aaaaa","..aa....aBByBa","...a...aBBBBBa",
+       "...aBBBBBBBBa.","..aBBBBBBBBBa.","..aeeeeeeeea..","...aa..aa.....",
+       "...aa..aa....."],
+      ["..a.......a.a.","..a......aaaaa","..aa....aBByBa","...a...aBBBBBa",
+       "...aBBBBBBBBa.","..aBBBBBBBBBa.","..aeeeeeeeea..","....aa..aa....",
+       "....aa..aa...."],
     ],
-    walkB: [
-      "..a.......a.a.","..a......aaaaa","..aa....aBByBa","...a...aBBBBBa",
-      "...aBBBBBBBBa.","..aBBBBBBBBBa.","..aeeeeeeeea..","..aa.....aa...",
-      "..aa.....aa...",
+    // Coming toward you: two ears, two eyes, tail behind one shoulder.
+    down: [
+      ["....a...a.....","...aaa.aaa....","...aaaaaaa....","...ayBBBya....",
+       "...aBBBBBa....","..aBBBBBBBa...","..aBBBBBBBa...","..aa....aa....",
+       ".............."],
+      ["....a...a..a..","...aaa.aaa.a..","...aaaaaaa.a..","...ayBBBya....",
+       "...aBBBBBa....","..aBBBBBBBa...","..aBBBBBBBa...","...aa..aa.....",
+       ".............."],
     ],
+    // Going away: no face, tail up.
+    up: [
+      ["....a...a..a..","...aaa.aaa.a..","...aaaaaaa.a..","...aaaaaaa....",
+       "...aBBBBBa....","..aBBBBBBBa...","..aBBBBBBBa...","..aa....aa....",
+       ".............."],
+      ["....a...a.....","...aaa.aaa....","...aaaaaaa....","...aaaaaaa....",
+       "...aBBBBBa....","..aBBBBBBBa...","..aBBBBBBBa...","...aa..aa.....",
+       ".............."],
+    ],
+    // Coiled before a jump. Anticipation is what makes a leap read as decided
+    // rather than as teleporting upward -- she gathers, then goes.
+    crouch: [
+      "..............","..a.......a.a.","..a......aaaaa","..aa....aBByBa",
+      "..aBBBBBBBBBBa",".aeeeeeeeeeea.","..aa......aa..","..............",
+      ".............."],
+    // Airborne: stretched long, legs trailing.
+    leap: [
+      "..a.......a.a.","..aa.....aaaaa",".a.aa...aBByBa","a...aaaaBBBBBa",
+      "....aBBBBBBBBa","..aaBBBBBBBBa.",".aa.aeeeeeea..","a.....aa..aa..",
+      ".............."],
     // Asleep. A curled cat is a comma with two ears on it.
     curl: [
       "..............","....a.a.......","...aaaaaa.....","..aBB--BBBa...",
       "..aBBBBBBBBa..","..aeeBBBBBBa..","...aaeeeeeaa..",".....aaaaa....",
-      "..............",
-    ],
-    // Airborne: front legs forward, back legs trailing, body stretched. A cat
-    // in the air is a longer shape than a cat on the ground.
-    leap: [
-      "..a.......a.a.","..aa.....aaaaa",".a.aa...aBByBa","a...aaaaBBBBBa",
-      "....aBBBBBBBBa","..aaBBBBBBBBa.",".aa.aeeeeeea..","a.....aa..aa..",
-      "..............",
-    ],
-    // Same curl, ears back and tail shifted. Even asleep a cat twitches.
+      ".............."],
     curlB: [
       "..............","....a.a.......","...aaaaaa.....","..aBB--BBBa...",
       "..aBBBBBBBBa..","..aeeBBBBBBa..","...aaeeeeeaa..","....aaaaa.....",
-      "..............",
-    ],
-    // Front legs stretched out, back arched. Played on waking.
+      ".............."],
+    // Front legs out, back arched. Played on waking.
     stretch: [
       "..............","..........a.a.","..a......aaaaa","..aa....aBByBa",
       ".aaBBBBBBBBBBa","aeeBBBBBBBBBe.","..aaeeeeeeea..","...aa.....aa..",
-      "..............",
-    ],
-    // Sat upright, tail curled round the feet.
+      ".............."],
     sit: [
       ".....a.a......","....aaaaa.....","....ayBya.....","....aBBBa.....",
       "...aBBBBBa....","...aBBBBBa....","...aBBBBBaa...","...aeeeeeaa...",
-      "....aaaaa.....",
-    ],
-    // Same, tail flicked out. A sitting cat is never entirely still.
+      "....aaaaa....."],
     sitB: [
       ".....a.a......","....aaaaa.....","....ayBya.....","....aBBBa.....",
       "...aBBBBBa..a.","...aBBBBBa.a..","...aBBBBBaa...","...aeeeeea....",
-      "....aaaaa.....",
-    ],
-    // Washing: head down to the shoulder, one back leg up.
+      "....aaaaa....."],
     groom: [
       ".....a.a......","....aaaaa.....","....aBBBa.....","...aBByBa.....",
       "..aBBBBBBa....","..aBBBBBBaa...","..aBBBBBBa.a..","..aeeeeeea....",
-      "...aaaaa......",
-    ],
+      "...aaaaa......"],
   };
 
   const CAT_SPEED = 22;                      // px/sec, unhurried
@@ -1915,6 +1946,9 @@
     // only the draw call subtracts z. That is the whole trick to a jump in a
     // top-down view.
     z: 0, vz: 0, grounded: true, standingOn: null, prevZ: 0,
+    // Which of the three views to draw. Chosen from whichever movement axis
+    // dominates, so walking up the room shows her back rather than her flank.
+    face: "down",
   };
   const GRAV = 900;              // px/s^2
   const JUMP_V0 = 330;           // reaches ~60px, a shade over a rack
@@ -2008,7 +2042,7 @@
       // itself starts once she gets there.
       const p = PERCHES[Math.floor(Math.random() * PERCHES.length)];
       cat.perch = p;
-      cat.launched = false;
+      cat.launched = false; cat.gather = 0;
       catGo(p.cx, p.y1 + 12);
       cat.until = now + 16000;
     } else if (state === "perch") {
@@ -2030,10 +2064,23 @@
     if (cat.state === "leap") {
       const p = cat.perch;
       if (!p) { catEnter("prowl", now); return; }
-      if (!cat.launched && cat.grounded &&
-          Math.hypot(cat.x - p.cx, cat.y - (p.y1 + 12)) < 6) {
+      // Gather, then go. Anticipation is what makes a leap read as decided
+      // rather than as teleporting upward.
+      //
+      // The timer has to be checked BEFORE the early return, not after it. The
+      // first version bailed out whenever the coil was held, so the branch that
+      // ends the coil never ran and she stayed crouched until the state timed
+      // out sixteen seconds later -- which the state sweep caught as "leap"
+      // where it expected "perch".
+      if (cat.gather) {
+        if (now < cat.gather) return;
+        cat.gather = 0;
         cat.vz = JUMP_V0; cat.launched = true; cat.grounded = false;
         cat.tx = p.cx; cat.ty = p.cy;
+      } else if (!cat.launched && cat.grounded &&
+                 Math.hypot(cat.x - p.cx, cat.y - (p.y1 + 12)) < 6) {
+        cat.gather = now + 420;
+        return;
       }
       if (cat.launched) {
         // Airborne: drive her horizontally toward the rack top. slideTo is
@@ -2044,6 +2091,7 @@
           const sp = 70 * dt / 1000, k = Math.min(1, sp / d);
           slideTo(cat, cat.x + dx * k, cat.y + dy * k, CAT_HW, CAT_FH, cat.z, 8);
           if (Math.abs(dx) > 0.3) cat.dir = dx > 0 ? 1 : -1;
+          cat.face = Math.abs(dx) >= Math.abs(dy) ? "side" : (dy > 0 ? "down" : "up");
         }
         if (cat.grounded) {
           if (cat.standingOn && cat.z > 4) catEnter("perch", now);
@@ -2089,7 +2137,11 @@
       const px = cat.x, py = cat.y;
       slideTo(cat, cat.x + wdx * k, cat.y + wdy * k, CAT_HW, CAT_FH);
       cat.dist += Math.abs(cat.x - px) + Math.abs(cat.y - py);
-      if (Math.abs(cat.x - px) > 0.15) cat.dir = cat.x > px ? 1 : -1;
+      const mdx = cat.x - px, mdy = cat.y - py;
+      if (Math.abs(mdx) > 0.15) cat.dir = mdx > 0 ? 1 : -1;
+      if (Math.abs(mdx) > 0.05 || Math.abs(mdy) > 0.05) {
+        cat.face = Math.abs(mdx) >= Math.abs(mdy) ? "side" : (mdy > 0 ? "down" : "up");
+      }
       // Wedged against something with the waypoint unreachable: give up on this
       // route and pick another. Without this she grinds into a corner forever.
       if (Math.abs(cat.x - px) < 0.02 && Math.abs(cat.y - py) < 0.02) {
@@ -2200,10 +2252,14 @@
       blit(flick ? CAT.sitB : CAT.sit, x, y, cat.dir < 0);
       return;
     }
+    if (cat.gather) { blit(CAT.crouch, x, y, cat.dir < 0); return; }
     if (!cat.grounded) { blit(CAT.leap, x, y, cat.dir < 0); return; }
     // Distance-driven, same as Fred: time-driven legs slide when speed changes.
-    const f = (Math.floor(cat.dist / 5) & 1) ? CAT.walkB : CAT.walkA;
-    blit(f, x, y, cat.dir < 0);
+    // Four frames in the profile so the gait has passing positions and not just
+    // contacts; the head-on views only need two.
+    const set = CAT[cat.face] || CAT.side;
+    const f = set[Math.floor(cat.dist / 5) % set.length];
+    blit(f, x, y, cat.face === "side" && cat.dir < 0);
   }
 
   function drawBall() {
@@ -2437,8 +2493,7 @@
       if (!it.fred) { drawRack(it.r); continue; }
       if (it.prop) it.prop.back(ctx);     // ... and the sandwich when he is on it
       if (fred.asleep) {
-        const rise = Math.floor(now / 1000) % 2 ? -1 : 0;
-        blitOnFace(SLEEP, BED.x + 4, BED.y + 1 + rise, false, BED);
+        drawSleeping(ctx, now);
         if (it.prop && it.prop.front) it.prop.front(ctx);
         continue;
       }
@@ -2805,6 +2860,7 @@
     // solid? Nothing should ever be, at any point in a long run.
     window.__catLeap = () => { catEnter("leap", performance.now()); return true; };
     window.__rackHeight = () => RACK_H;
+    window.__catFace = () => cat.face;
     window.__ballSet = (x, y, vx, vy) => { ball.x = x; ball.y = y; ball.vx = vx; ball.vy = vy; };
     window.__ballState = () => ({x: ball.x, y: ball.y, vx: ball.vx, vy: ball.vy});
     window.__physics = () => ({
