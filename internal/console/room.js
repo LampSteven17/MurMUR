@@ -88,7 +88,7 @@
     catA:"#3a2214", catB:"#a86534", catC:"#d9995a", catEye:"#9be36a",
     ballA:"#d94f6a", ballB:"#f2899b", mess:"#6d5a3f",
     txt:"#c9d4e8", dim:"#5a6488", rug:"#2a2f47", rugLit:"#39405e",
-    quilt:"#6e4450", pillow:"#a9bad9", bedFrame:"#4a3524", bedTop:"#6b4c33",
+    quilt:"#6e4450", quiltDk:"#4a2b34", quiltLt:"#8a5866", pillow:"#a9bad9", bedFrame:"#4a3524", bedTop:"#6b4c33",
     rackEdge:"#0d0c14", rackTop:"#646d92", rackFace:"#343a55", rackLit:"#4a5273",
     wallCap:"#4a4d70", wall:"#242439", floorA:"#262940", floorB:"#2f334e",
     dark:"#0d0c14",
@@ -229,15 +229,34 @@
   // under a quilt is a raised mound with a top and a front, and a decal has
   // neither. The mound is a box now (see drawSleeping) and this is what rests
   // on the pillow at the end of it.
-  const SLEEP_HEAD = [
-    "..oooo....",
-    ".oAAAAo...",
-    ".oAAAAAo..",
-    ".oASSSAo..",
-    ".oSmSmSo..",
-    ".oSSSSSo..",
-    "..oooo....",
-  ];
+  // 40x12, one sprite: pillow, head, duvet and all. He used to be a head sprite
+  // composited with a procedurally drawn box for the covers, and no amount of
+  // moving those two things relative to each other was going to make them read
+  // as one person -- the head sat beside a lump with nothing joining them.
+  //
+  // Drawn UNSHEARED. Only flat surfaces take the mattress's lean; a person has
+  // height, and shearing the whole figure squashed it into a diagonal smear.
+  // The bed underneath carries the perspective.
+  //
+  // The duvet's top edge follows shoulder, waist, hip, legs, feet. A straight
+  // top edge is what made it a plank. The two frames differ by one pixel over
+  // the chest, which is the breathing.
+  const SLEEPER = {
+    a: [
+      "........................................","........................................","....luuuuuuuul..........................",
+      "...lllAoooooAllgggg......gggggg.........","..llloAAAAAAAolQQQQggggggQQQQQQggggg....","..lllAAAAAAAAAlQQQQQQQQQQQQQQQQQQQQQgggg",
+      "..lllASmSSSmSAlQQQQQQQfQQQQQQQQfQQQQQQQQ","..lllASSSmSSSAlQQQQQQQQQQQQQQQQQQQQQQQQQ","...lllAAAAAAAllQQQQQQQQQQQQQQQQQQQQQQQQQ",
+      ".....loooooool.fffffffffffffffffffffffff","...............fffffffffffffffffffffffff","................fffffffffffffffffffffff.",
+    ],
+    b: [
+      "........................................","........................................","....luuuuuuuul.gggg.....................",
+      "...lllAoooooAllQQQQ......gggggg.........","..llloAAAAAAAolQQQQggggggQQQQQQggggg....","..lllAAAAAAAAAlQQQQQQQQQQQQQQQQQQQQQgggg",
+      "..lllASmSSSmSAlQQQQQQQfQQQQQQQQfQQQQQQQQ","..lllASSSmSSSAlQQQQQQQQQQQQQQQQQQQQQQQQQ","...lllAAAAAAAllQQQQQQQQQQQQQQQQQQQQQQQQQ",
+      ".....loooooool.fffffffffffffffffffffffff","...............fffffffffffffffffffffffff","................fffffffffffffffffffffff.",
+    ],
+  };
+
+
 
 
 
@@ -252,6 +271,7 @@
     O:C.bodyO, z:C.legO,
     s:C.skin2, S:C.skin3, d:C.skin1, E:C.eyeP, w:C.eyeLit,
     W:C.scleraW, m:C.skin0, r:C.blush,
+    l:C.pillow, u:C.cloth4, f:C.quiltDk, g:C.quiltLt,
     C:C.shirt2, L:C.shirt3, c:C.shirt1,
     P:C.pant2, p:C.pant1, b:C.boot,
     Q:C.quilt, q:C.cloth1, "-":C.ink,
@@ -1904,29 +1924,13 @@
   // top and a front, and a decal has neither. Breathing lifts the mound instead
   // of sliding a picture up and down.
   function drawSleeping(g, now) {
-    const rise = Math.floor(now / 2400) % 2 ? 1 : 0;
-    // The mound starts clear of the pillow and is sized to sit inside the
-    // mattress. bare: it is part of the bed, not a crate on top of it.
-    // The quilt has to meet his shoulders. It used to be 26 wide by 18 deep,
-    // which stands 10px tall on screen once its own depth is counted -- five
-    // clear above the top of his head, and starting a gap to the right of it.
-    // A head with a lump beside it and nothing joining them reads as a head
-    // sitting on a bed, not as a person under a cover.
-    const body = topPoint(BED, 0.34, 0.15);
-    drawBox(g, body.x, body.y, 24, 12, 3 + rise, MAT.quilt, {shadow: false, bare: true});
-    // Head centred ON the pillow, which is at u 0.03-0.30. It used to be at
-    // u 0.10 with the sprite's top-left corner placed there, so it sat up and
-    // left of the pillow and overhung the frame instead of resting on anything.
-    // Placed so all seven rows land inside the mattress. The top face is only
-    // nine rows deep and it shears two pixels per row, so a head hung six rows
-    // above its anchor point ends up off the back of the bed and left of the
-    // surface -- which is exactly where it was.
-    const head = topPoint(BED, 0.17, 0.5);
-    blit(SLEEP_HEAD, head.x, head.y - 3, false);
+    const frame = Math.floor(now / 2400) % 2 ? SLEEPER.b : SLEEPER.a;
+    blit(frame, BED.x + 12, BED.y - 4, false);
     if (Math.floor(now / 1400) % 2) {
-      drawText(g, "z", head.x + 11, head.y - 9, C.dim);
+      drawText(g, "z", BED.x + 24, BED.y - 12, C.dim);
     }
   }
+
 
   // --- the cat ---------------------------------------------------------------
   // She has her own little state machine, deliberately separate from Fred's:
